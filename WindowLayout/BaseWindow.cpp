@@ -97,8 +97,6 @@ void BaseWindow::saveSettings()
 
 void BaseWindow::closeEvent(QCloseEvent* event)
 {
-    m_windowManager->setWindowClosing(true);
-
     QMainWindow::closeEvent(event);
 
 

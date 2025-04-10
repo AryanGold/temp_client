@@ -70,8 +70,9 @@ private:
 
 public:
     void init(QPlainTextEdit* loggerWidget);
-    void closeLogger();
     void msg(const QString& msg, const Level level = Level::INFO);
     void setLevel(const Level level);
+
+    void closeLogger();
 };
 

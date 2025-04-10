@@ -13,6 +13,7 @@
 #include <QGuiApplication> // For QGuiApplication::primaryScreen()
 #include <QStyle> 
 #include <QDebug> 
+#include <QMessageBox> 
 #include <set> 
 
 const QString FIRST_RUN_KEY = "Application/FirstRunCompleted"; // Key to check first run
@@ -212,7 +213,7 @@ QMainWindow* WindowManager::createNewDynamicWindow(const QString& objectId, cons
     if (window) {
         window->setAttribute(Qt::WA_DeleteOnClose); // Ensure attribute is set
 
-        ///connect(window, &QObject::destroyed, this, &WindowManager::handleDynamicWindowDestroyed);
+        connect(window, &QObject::destroyed, this, &WindowManager::handleDynamicWindowDestroyed);
         m_dynamicWindows.append(window);
 
         // Load settings might have happened in constructor.
@@ -254,8 +255,6 @@ QMainWindow* WindowManager::createNewDynamicWindow(const QString& objectId, cons
 // WindowManager.cpp
 
 void WindowManager::handleDynamicWindowDestroyed(QObject* obj /* Optional */) {
-    Log.msg(FNAME + "G1 - Slot Triggered [LOGIC DISABLED]", Logger::Level::DEBUG);
-    /*
     Log.msg(FNAME + "G1 - Slot Triggered", Logger::Level::DEBUG);
     QObject* senderObj = sender();
     if (!senderObj) {
@@ -308,11 +307,12 @@ void WindowManager::handleDynamicWindowDestroyed(QObject* obj /* Optional */) {
         // This indicates a bigger issue - the pointer wasn't in the list, or sender() is somehow wrong
         Log.msg(FNAME + "FAILED to find window in list matching sender address! Sender: " + senderObjectName, Logger::Level::ERROR);
     }
-    */
 }
 
 // Function to save the state of all tracked dynamic windows
 void WindowManager::saveWindowStates() {
+    QMessageBox::information(nullptr, "Info", "WindowManager::saveWindowStates");
+
     Log.msg(FNAME + "Saving application state...", Logger::Level::DEBUG);
     QSettings settings;
 

@@ -63,11 +63,37 @@ int main(int argc, char *argv[])
     bool focusConnectResult = QObject::connect(qApp, &QApplication::focusChanged,
         &windowManager, &WindowManager::handleFocusChanged);
     if (!focusConnectResult) {
+        qCritical() << "FATAL: Failed to connect focusChanged signal!";
         Log.msg("FATAL: Failed to connect focusChanged signal!", Logger::Level::ERROR);
+        // Consider adding a QMessageBox here too if the log might not work yet
+        // QMessageBox::critical(nullptr, "Connect Error", "Failed to connect focusChanged signal!");
+    }
+    else {
+        qInfo() << "Successfully connected focusChanged signal.";
+        Log.msg("Successfully connected focusChanged signal.", Logger::Level::DEBUG);
     }
 
-    bool connectResult = QObject::connect(&app, &QApplication::aboutToQuit, 
+    bool quitConnectResult = QObject::connect(&app, &QApplication::aboutToQuit,
         &windowManager, &WindowManager::saveWindowStates);
+    if (!quitConnectResult) {
+        qCritical() << "FATAL: Failed to connect aboutToQuit signal for saveWindowStates!";
+        Log.msg("FATAL: Failed to connect aboutToQuit signal for saveWindowStates!", Logger::Level::ERROR);
+        // QMessageBox::critical(nullptr, "Connect Error", "Failed to connect aboutToQuit signal for saveWindowStates!");
+    }
+    else {
+        qInfo() << "Successfully connected aboutToQuit signal for saveWindowStates.";
+        Log.msg("Successfully connected aboutToQuit signal for saveWindowStates.", Logger::Level::DEBUG);
+    }
+
+    // Connect log closing separately
+    //Logger* l = &Logger::getSingleton();
+    //bool logQuitConnectResult = QObject::connect(&app, &QApplication::aboutToQuit, l, &Logger::closeLogger);
+    //if (!logQuitConnectResult) {
+    //    qWarning() << "Failed to connect aboutToQuit signal for Log::closeLogger!";
+    //}
+    //else {
+    //    qInfo() << "Successfully connected aboutToQuit signal for Log::closeLogger.";
+    //}
 
     return app.exec();
 }

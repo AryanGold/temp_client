@@ -118,10 +118,10 @@ void ToolPanelWindow::openTakesWindow() // SLOT
 
 void ToolPanelWindow::exitApp() // SLOT
 {
-    windowManager->saveWindowStates();
+    ///windowManager->saveWindowStates();
 
     Log.msg("App Exit");
-    Log.closeLogger();
+    ///Log.closeLogger();
 
     qApp->quit();
 }
