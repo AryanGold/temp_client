@@ -1,0 +1,27 @@
+# Visual Studio files
+.vs
+.vs/
+*.vcxproj.user
+*.vcxproj.filters
+*.sln.docstates
+*.suo
+*.user
+*.userosscache
+*.sln.ide/
+
+# Qt generated files
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+Makefile
+Makefile.*
+*-build-*
+*.pro.user
+*.pro.user.*
+.qmake.stash
+
+# Precompiled Headers
+*.pch
+
+# Ignore Qt generated Visual Studio files
+GeneratedFiles/

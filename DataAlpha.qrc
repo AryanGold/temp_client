@@ -1,0 +1,22 @@
+<RCC>
+    <qresource prefix="/DataAlpha"/>
+    <qresource prefix="/icons">
+        <file>resources/icons/buttons/exit.png</file>
+        <file>resources/icons/buttons/add.png</file>
+        <file>resources/icons/buttons/calendar.png</file>
+        <file>resources/icons/buttons/help.png</file>
+        <file>resources/icons/buttons/reload.png</file>
+        <file>resources/icons/buttons/settings.png</file>
+        <file>resources/icons/buttons/reload_big.png</file>
+        <file>resources/icons/buttons/show_all.png</file>
+        <file>resources/icons/buttons/continue.png</file>
+        <file>resources/icons/buttons/pause.png</file>
+        <file>resources/icons/buttons/remove_item.png</file>
+        <file>resources/icons/buttons/status_green.png</file>
+        <file>resources/icons/buttons/status_red.png</file>
+        <file>resources/icons/buttons/status_yellow.png</file>
+        <file>resources/icons/buttons/settings_item.png</file>
+        <file>resources/icons/buttons/new_chart.png</file>
+        <file>resources/icons/buttons/add_table.png</file>
+    </qresource>
+</RCC>
