@@ -231,28 +231,6 @@ QMainWindow* WindowManager::createNewDynamicWindow(const QString& objectId, cons
     return window; // Return pointer if needed elsewhere
 }
 
-// Slot/Function called when a tracked window is closed and destroyed
-/*void WindowManager::handleDynamicWindowDestroyed(QObject* obj) {
-    Log.msg(FNAME + "G1", Logger::Level::DEBUG);
-    QMainWindow* window = qobject_cast<QMainWindow*>(obj);
-    if (window) {
-        Log.msg(FNAME + "G2: " + QString::number(m_dynamicWindows.count()), Logger::Level::DEBUG);
-        bool removed = m_dynamicWindows.removeOne(window);
-        Log.msg(FNAME + "G3: " + QString::number(m_dynamicWindows.count()), Logger::Level::DEBUG);
-        if (removed) {
-            Log.msg(FNAME + "Stopped tracking window:" + window->objectName(), Logger::Level::DEBUG);
-        }
-        else {
-            Log.msg(FNAME + "Attempted to stop tracking untracked window:" + window->objectName(), Logger::Level::WARNING);
-        }
-        // No need to call saveWindowStates here, rely on aboutToQuit
-    }
-    else {
-        Log.msg(FNAME + "Unable to destroy dynamic window", Logger::Level::ERROR);
-    }
-}*/
-
-// WindowManager.cpp
 
 void WindowManager::handleDynamicWindowDestroyed(QObject* obj /* Optional */) {
     Log.msg(FNAME + "G1 - Slot Triggered", Logger::Level::DEBUG);

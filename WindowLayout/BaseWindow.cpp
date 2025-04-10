@@ -97,10 +97,6 @@ void BaseWindow::saveSettings()
 
 void BaseWindow::closeEvent(QCloseEvent* event)
 {
-    QMainWindow::closeEvent(event);
-
-
-    /*
     // Call WindowManager to set the closing flag
     m_windowManager->setWindowClosing(true);
 
@@ -111,5 +107,4 @@ void BaseWindow::closeEvent(QCloseEvent* event)
     // This ensures the flag is reset AFTER the current event processing is done,
     // preventing the focus change handler from immediately reshowing the window.
     QMetaObject::invokeMethod(m_windowManager, "setWindowClosing", Qt::QueuedConnection, Q_ARG(bool, false));
-    */
 }
