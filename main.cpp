@@ -53,8 +53,6 @@ int main(int argc, char *argv[])
     windowManager.registerWindow(&watchlist, "Watchlist");
     windowManager.registerWindow(&logWindow, "LogWindow");
 
-    windowManager.applyDefaultWindowStates();
-
     toolPanel.show(); // ensure that ToolPanel window always first in task bar
     watchlist.show();
     logWindow.show();

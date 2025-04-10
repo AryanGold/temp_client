@@ -100,6 +100,9 @@ void BaseWindow::closeEvent(QCloseEvent* event)
     // Call WindowManager to set the closing flag
     m_windowManager->setWindowClosing(true);
 
+    // Tell WindowManager to unregister this main window
+    m_windowManager->unregisterMainWindow(this->objectName());
+
     // Accept the event to allow closing
     QMainWindow::closeEvent(event);
 }

@@ -13,10 +13,7 @@
 #include <QGuiApplication> // For QGuiApplication::primaryScreen()
 #include <QStyle> 
 #include <QDebug> 
-#include <QMessageBox> 
-#include <set> 
-
-const QString FIRST_RUN_KEY = "Application/FirstRunCompleted"; // Key to check first run
+#include <set>
 
 WindowManager::WindowManager(QObject* parent)
     : QObject(parent), settings(NAME_COMPANY, NAME_PROGRAM_FULL)
@@ -66,6 +63,28 @@ void WindowManager::registerWindow(QMainWindow* window, const QString& name) {
     // Dynamic windows handle their destruction via handleDynamicWindowDestroyed.
 }
 
+// Method to remove a window from the main tracking map
+void WindowManager::unregisterMainWindow(const QString& name) {
+    Log.msg(FNAME + "Attempting to unregister main window: " + name, Logger::Level::DEBUG);
+    if (m_mainWindows.contains(name)) {
+        // Remove the entry from the map.
+        // The QPointer will become null automatically if the object is deleted later,
+        // but removing the map entry prevents showAllWindows from finding it.
+        int removedCount = m_mainWindows.remove(name);
+        if (removedCount > 0) {
+            Log.msg(FNAME + "Successfully unregistered main window: " + name, Logger::Level::DEBUG);
+        }
+        else {
+            // Should not happen if contains() was true
+            Log.msg(FNAME + "Failed to remove main window from map even though it was found: " + name, 
+                Logger::Level::WARNING);
+        }
+    }
+    else {
+        Log.msg(FNAME + "Window not found in main window map for unregistration: " + name, Logger::Level::WARNING);
+    }
+}
+
 // When user click on any window of this app then we show (unhide all other windows).
 // For avoid click on each window for show whole app if it hidden.
 void WindowManager::handleFocusChanged(QWidget* oldFocus, QWidget* newFocus) {
@@ -93,18 +112,11 @@ void WindowManager::handleFocusChanged(QWidget* oldFocus, QWidget* newFocus) {
     QWidget* topLevelWidget = newFocus->window();
     QMainWindow* activatedWindow = qobject_cast<QMainWindow*>(topLevelWidget);
 
-    // --- Temporary Logging ---
-    QString topLevelClassName = topLevelWidget ? topLevelWidget->metaObject()->className() : "None";
-    QString topLevelObjName = topLevelWidget ? topLevelWidget->objectName() : "N/A";
-    qDebug() << "Focus changed. newFocus:" << newFocus->metaObject()->className() << "(" << newFocus->objectName() << ")"
-        << " | topLevel:" << topLevelClassName << "(" << topLevelObjName << ")";
-    QString msg = QString("Focus changed. newFocus: %1 (%2) | topLevel: %3(%4)")
-        .arg(newFocus->metaObject()->className())
-        .arg(newFocus->objectName())
-        .arg(topLevelClassName)
-        .arg(topLevelObjName);
-    Log.msg(FNAME + msg, Logger::Level::DEBUG);
-    // --- End Temporary Logging ---
+    if (topLevelWidget) {
+        QString topLevelClassName = topLevelWidget ? topLevelWidget->metaObject()->className() : "None";
+        QString msg = QString("Focus changed: %1").arg(topLevelClassName);
+        Log.msg(FNAME + msg, Logger::Level::DEBUG);
+    }
 
     if (activatedWindow) {
         // Check if the activated window IS the ToolPanelWindow ---
@@ -117,7 +129,10 @@ void WindowManager::handleFocusChanged(QWidget* oldFocus, QWidget* newFocus) {
         }
         // unmanaged window activated e.g., a dialog, or external?
         else {
-            Log.msg(FNAME + "Focus changed to unmanaged window: " + topLevelWidget->objectName(), Logger::Level::DEBUG);
+            if (topLevelWidget) {
+                Log.msg(FNAME + "Focus changed to unmanaged window: " + topLevelWidget->objectName(),
+                    Logger::Level::DEBUG);
+            }
         }
     }
 }
@@ -298,8 +313,6 @@ void WindowManager::handleDynamicWindowDestroyed(QObject* obj /* Optional */) {
 
 // Function to save the state of all tracked dynamic windows
 void WindowManager::saveWindowStates() {
-    QMessageBox::information(nullptr, "Info", "WindowManager::saveWindowStates");
-
     Log.msg(FNAME + "Saving application state...", Logger::Level::DEBUG);
     QSettings settings;
 
@@ -357,93 +370,86 @@ void WindowManager::saveWindowStates() {
     Log.msg(FNAME + QString("Saved session state for %1 windows.").arg(stateSaveCount), Logger::Level::DEBUG);
 }
 
-
 void WindowManager::restoreWindowStates() {
-    Log.msg(FNAME + "Restoring application state...", Logger::Level::DEBUG);
+    Log.msg("WindowManager: Restoring application state...", Logger::Level::DEBUG);
     QSettings settings;
 
-    // Check if defaults should be applied INSTEAD of restorin
-    // We already check this in applyDefaultWindowStates, but double-check is ok
-    bool firstRun = !settings.contains(FIRST_RUN_KEY) || !settings.value(FIRST_RUN_KEY).toBool();
-    if (firstRun) {
-        Log.msg(FNAME + "Restore skipped on first run, defaults size and position were applied.", Logger::Level::INFO);
-        return; // Defaults already applied, don't try to restore non-existent settings
-    }
-
     // --- 1. Recreate Dynamic Windows ---
+    // (This part remains the same - reads Session/OpenDynamicWindows, calls createNewDynamicWindow)
     settings.beginGroup("Session/OpenDynamicWindows");
     QStringList idsAndTypes = settings.value("IdsAndTypes").toStringList();
-    settings.endGroup(); // End dynamic list group
-
+    settings.endGroup();
     int dynamicRecreatedCount = 0;
     for (const QString& idAndType : idsAndTypes) {
+        // ... (split id/type, call createNewDynamicWindow) ...
+        // createNewDynamicWindow adds to m_dynamicWindows and shows
         QStringList parts = idAndType.split('|');
         if (parts.size() == 2) {
             QString id = parts[0];
             QString type = parts[1];
-            // createNewDynamicWindow handles adding to m_dynamicWindows, connecting signals, showing
             QMainWindow* restoredDynamicWindow = this->createNewDynamicWindow(id, type);
             if (restoredDynamicWindow) {
                 dynamicRecreatedCount++;
             }
             else {
-                QString msg = QString("Failed to recreate dynamic window: %1, Type: %2").arg(id).arg(type);
-                Log.msg(FNAME + msg, Logger::Level::WARNING);
+                Log.msg(QString("Failed to recreate dynamic window: %1, Type: %2").arg(id).arg(type),
+                    Logger::Level::WARNING);
             }
         }
         else {
-            QString msg = QString("Invalid format in OpenDynamicWindows list:: %1").arg(idAndType);
-            Log.msg(FNAME + msg, Logger::Level::WARNING);
+            Log.msg(QString("Invalid format in OpenDynamicWindows list: %1").arg(idAndType),
+                Logger::Level::WARNING);
         }
     }
-    Log.msg(FNAME + QString("Recreated %1 dynamic windows.").arg(dynamicRecreatedCount), Logger::Level::DEBUG);
+    Log.msg(QString("Recreated %1 dynamic windows.").arg(dynamicRecreatedCount),
+        Logger::Level::DEBUG);
 
+    // Combine main and dynamic windows into a single list for processing
+    QList<QMainWindow*> allManagedWindows;
+    for (const QPointer<QMainWindow>& ptr : m_mainWindows.values()) {
+        if (ptr) allManagedWindows.append(ptr);
+    }
+    allManagedWindows.append(m_dynamicWindows); // Add dynamic ones (already created)
 
-    // --- 2. Restore State (Geometry/Visibility) for ALL Managed Windows ---
-    // This runs *after* dynamic windows are recreated and main windows already exist.
-    settings.beginGroup("Session/WindowStates");
-    QStringList windowIds = settings.childGroups(); // Get list of windows with saved state
     int stateRestoreCount = 0;
+    int defaultAppliedCount = 0;
 
-    // Combine main and dynamic windows again to find the instances
-    QMap<QString, QMainWindow*> allWindowsMap; // Map objectName to instance pointer
-    for (QMainWindow* window : std::as_const(m_dynamicWindows)) {
-        if (window) allWindowsMap.insert(window->objectName(), window);
-    }
-    for (auto it = m_mainWindows.constBegin(); it != m_mainWindows.constEnd(); ++it) {
-        if (it.value()) allWindowsMap.insert(it.key(), it.value());
-    }
+    settings.beginGroup("Session/WindowStates"); // Group where session state is saved
 
+    for (QMainWindow* window : std::as_const(allManagedWindows)) {
+        if (!window) continue; // Should not happen, but check pointer
 
-    for (const QString& id : windowIds) {
-        if (allWindowsMap.contains(id)) {
-            QMainWindow* window = allWindowsMap.value(id);
-            if (window) { // Should always be valid if found in map
-                settings.beginGroup(id);
-                QByteArray geometry = settings.value("geometry").toByteArray();
-                bool wasVisible = settings.value("isVisible", true).toBool(); // Default true
-                settings.endGroup(); // End specific window state group
+        QString id = window->objectName();
+        if (id.isEmpty()) {
+            Log.msg(QString("Window lacks objectName. Cannot restore/apply default state."),
+                Logger::Level::WARNING);
+            continue;
+        }
 
-                if (!geometry.isEmpty()) {
-                    // Restore geometry AFTER the window exists and potentially after dynamic ones are shown
-                    if (!window->restoreGeometry(geometry)) {
-                        Log.msg(FNAME + QString("Could not restore session geometry for window: %1").arg(id), 
-                            Logger::Level::WARNING);
-                        // Maybe apply BaseWindow's loadSettings again as fallback?
-                        // BaseWindow* bw = qobject_cast<BaseWindow*>(window);
-                        // if(bw) bw->loadSettings(); // Careful about redundant loads
-                    }
-                    else {
-                        //qInfo() << "Restored session geometry for window:" << id;
-                    }
+        bool restoredState = false;
+        // Check if state exists for this specific window ID within the session group
+        if (settings.childGroups().contains(id)) {
+            settings.beginGroup(id);
+            QByteArray geometry = settings.value("geometry").toByteArray();
+            bool wasVisible = settings.value("isVisible", true).toBool();
+            settings.endGroup(); // End specific window state group
+
+            if (!geometry.isEmpty()) {
+                if (window->restoreGeometry(geometry)) {
+                    restoredState = true; // Mark that we successfully restored geometry
                 }
+                else {
+                    // Fall through to apply default geometry if restore failed
+                }
+            }
+            else {
+                // Fall through to apply default geometry
+            }
 
-                // Apply visibility state from session
+            // Apply visibility from session state ONLY if geometry was successfully restored
+            if (restoredState) {
                 if (wasVisible) {
-                    // Don't show ToolPanel here, main.cpp does it
-                    if (id != "ToolPanel") {
-                        window->show();
-                    }
+                    if (id != "ToolPanel") window->show(); // Show unless it's ToolPanel
                 }
                 else {
                     window->hide();
@@ -452,15 +458,57 @@ void WindowManager::restoreWindowStates() {
             }
         }
         else {
-            Log.msg(FNAME + QString("Session state found for unknown/missing window ID: %1").arg(id),
-                Logger::Level::WARNING);
+            // Fall through to apply default geometry
         }
-    }
-    settings.endGroup(); // End WindowStates group
-    Log.msg(FNAME + QString("Restored session state for %1 windows.").arg(stateRestoreCount),
-        Logger::Level::DEBUG);
-}
 
+
+        // --- Apply Default Geometry if State Was Not Found or Restore Failed ---
+        if (!restoredState) {
+            // Define defaults here or retrieve them from a config structure
+            if (id == "ToolPanel") {
+                // size(600px, 20px) position[top left]
+                applyDefaultGeometry(id, 600, 20, 0, 0, "top left");
+                window->show(); // Ensure ToolPanel is shown even if default applied
+                defaultAppliedCount++;
+            }
+            else if (id == "LogWindow") {
+                // size(100%, 10%) position[bottom left]
+                applyDefaultGeometry(id, 0, 0, 100, 10, "bottom left");
+                window->show(); // Show windows with defaults applied
+                defaultAppliedCount++;
+            }
+            else if (id == "Watchlist") {
+                // size(200px, 50%) position[top right]
+                applyDefaultGeometry(id, 200, 0, 0, 50, "top right");
+                window->show(); // Show windows with defaults applied
+                defaultAppliedCount++;
+            }
+            else if (id == "TakesPage") { // Example default for a statically created TakesPage
+                applyDefaultGeometry(id, 800, 600, 0, 0, "center");
+                window->show();
+                defaultAppliedCount++;
+            }
+            else if (id == "QuoteChart") { // Example default for a statically created QuoteChart
+                applyDefaultGeometry(id, 800, 600, 0, 0, "center");
+                window->show();
+                defaultAppliedCount++;
+            }
+            else if (id.startsWith("TakesPage_") || id.startsWith("Plot chart_")) {
+                // Optional: Apply a default for dynamic windows if their state is missing
+                applyDefaultGeometry(id, 600, 400, 0, 0, "center");
+                window->show(); // Dynamic windows are usually shown by createNewDynamicWindow anyway
+                defaultAppliedCount++;
+            }
+            else {
+                Log.msg("No default geometry defined for window: " + id,
+                    Logger::Level::WARNING);
+                window->show(); // Show anyway with Qt's default size/pos
+            }
+        }
+    } // End loop through allManagedWindows
+
+    settings.endGroup(); // End WindowStates group
+}
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -472,40 +520,25 @@ void WindowManager::setWindowClosing(bool closing) {
 /////////////////////////////////////////////////////////////////////////////
 // Methods for degault windows size and positions
 
-//Method to apply default states if it's the first run
-void WindowManager::applyDefaultWindowStates() {
-    QSettings settings;
-    if (settings.contains(FIRST_RUN_KEY) && settings.value(FIRST_RUN_KEY).toBool()) {
-        return; // Not the first run, or key exists and is true
-    }
-
-    // --- Apply defaults using the helper ---
-    // ToolPanelWindow: size(600px, 20px) position[top left]
-    applyDefaultGeometry("ToolPanel", 600, 20, 0, 0, "top left");
-
-    // LogWindow: size(100%, 10%) position[bottom left]
-    applyDefaultGeometry("LogWindow", 0, 0, 100, 10, "bottom left");
-
-    // WatchlistWindow: size(200px, 50%) position[top right]
-    applyDefaultGeometry("Watchlist", 200, 0, 0, 50, "top right");
-
-    // --- Mark first run as completed ---
-    settings.setValue(FIRST_RUN_KEY, true);
-    settings.sync(); // Ensure it's written immediately
-}
-
-
-// NEW: Helper function to calculate and apply geometry
+// Helper function to calculate and apply geometry
 void WindowManager::applyDefaultGeometry(const QString & windowName, int wPix, int hPix, int wPerc, int hPerc, const QString & position) {
-    if (!m_mainWindows.contains(windowName)) {
-        QString msg = QString("Cannot apply default geometry: Window '%1' not registered.").arg(windowName);
-        Log.msg(FNAME + msg,Logger::Level::WARNING);
-        return;
+
+    QMainWindow* window = nullptr;
+    if (m_mainWindows.contains(windowName)) {
+        window = m_mainWindows.value(windowName);
+    }
+    else {
+        // Check dynamic windows too, though defaults are less common for them
+        for (QMainWindow* dynWin : std::as_const(m_dynamicWindows)) {
+            if (dynWin && dynWin->objectName() == windowName) {
+                window = dynWin;
+                break;
+            }
+        }
     }
 
-    QMainWindow* window = m_mainWindows.value(windowName);
     if (!window) {
-        QString msg = QString("Cannot apply default geometry: Window pointer for '%1' is null.").arg(windowName);
+        QString msg = QString("Cannot apply default geometry: Window '%1' not found in managed lists..").arg(windowName);
         Log.msg(FNAME + msg, Logger::Level::WARNING);
         return;
     }

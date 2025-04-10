@@ -19,6 +19,7 @@ public:
     ////////////////////
     // Main windows fucntional
     void registerWindow(QMainWindow* window, const QString& name);
+    void unregisterMainWindow(const QString& name);
     void showAllWindows();
     ////////////////////
 
@@ -33,7 +34,6 @@ public:
     void restoreWindowStates();
     void setWindowClosing(bool closing);
 
-    void applyDefaultWindowStates();
     void applyDefaultGeometry(const QString& windowName, int wPix, int hPix, int wPerc, int hPerc, const QString& position);
 
 public slots:

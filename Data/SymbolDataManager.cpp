@@ -3,7 +3,6 @@
 #include <QReadLocker>
 #include <QWriteLocker>
 #include <QDebug>
-#include <QMessageBox>
 
 SymbolDataManager::SymbolDataManager(QObject* parent) : QObject(parent) {
 }
