@@ -71,14 +71,23 @@ void WindowManager::registerWindow(QMainWindow* window, const QString& name) {
 void WindowManager::handleFocusChanged(QWidget* oldFocus, QWidget* newFocus) {
     Q_UNUSED(oldFocus); // We only care about the new focus
 
-    if (m_isWindowClosing) { 
-        return; // Don't proceed if a close operation is happening
+    // --- Check the flag ---
+    bool wasClosing = m_isWindowClosing; // Store current flag state
+    if (m_isWindowClosing) {
+        Log.msg(FNAME + "Ignoring focus change during window close.", Logger::Level::DEBUG);
+        // --- Reset the flag HERE ---
+        m_isWindowClosing = false; // Reset after detecting it was set
+        // --- End Reset ---
+        return; // Don't proceed to show windows
     }
+    // --- End Check ---
 
     if (!newFocus) {
         // Focus left the application, do nothing regarding showing windows
         return;
     }
+
+    m_isWindowClosing = false; // double check
 
     // Find the top-level window containing the newly focused widget
     QWidget* topLevelWidget = newFocus->window();

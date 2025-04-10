@@ -102,9 +102,4 @@ void BaseWindow::closeEvent(QCloseEvent* event)
 
     // Accept the event to allow closing
     QMainWindow::closeEvent(event);
-
-    // Queue the reset of the closing flag
-    // This ensures the flag is reset AFTER the current event processing is done,
-    // preventing the focus change handler from immediately reshowing the window.
-    QMetaObject::invokeMethod(m_windowManager, "setWindowClosing", Qt::QueuedConnection, Q_ARG(bool, false));
 }
