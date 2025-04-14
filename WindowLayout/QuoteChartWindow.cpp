@@ -19,9 +19,10 @@ QuoteChartWindow::QuoteChartWindow(WindowManager* windowManager, ClientReceiver*
     : BaseWindow("QuoteChart", windowManager, parent),
     m_clientReceiver(clientReceiver)
 {
-    Log.msg(FNAME + QString("Creating main chart window..."), Logger::Level::INFO);
+    Log.msg(FNAME + QString("Creating main chart window..."), Logger::Level::DEBUG);
     if (!m_clientReceiver) {
-        Log.msg(FNAME + QString("FATAL: ClientReceiver pointer is null! UI will not function correctly."), Logger::Level::ERROR);
+        Log.msg(FNAME + QString("FATAL: ClientReceiver pointer is null! UI will not function correctly."), 
+            Logger::Level::ERROR);
         // Q_ASSERT(m_clientReceiver != nullptr); // Use assertion in debug builds
     }
 
@@ -47,8 +48,6 @@ QuoteChartWindow::QuoteChartWindow(WindowManager* windowManager, ClientReceiver*
         m_symbolCombo->setEnabled(false);
         m_dateCombo->setEnabled(false);
     }
-
-    Log.msg(FNAME + QString("Chart window created successfully."), Logger::Level::INFO);
 }
 
 void QuoteChartWindow::setupUi() {
@@ -96,8 +95,6 @@ void QuoteChartWindow::setupUi() {
 }
 
 void QuoteChartWindow::setupConnections() {
-    Log.msg(FNAME + QString("Setting up signal/slot connections."), Logger::Level::DEBUG);
-
     // Connect UI controls
     connect(m_symbolCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &QuoteChartWindow::onSymbolChanged);
     connect(m_dateCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &QuoteChartWindow::onDateChanged);
@@ -222,7 +219,7 @@ void QuoteChartWindow::requestPlotUpdate() {
 }
 
 void QuoteChartWindow::onDataModelReady(const QStringList& availableSymbols, const QMap<QString, QList<QDate>>& availableDatesPerSymbol) {
-    Log.msg(FNAME + QString("Received dataReady signal. Symbols: %1").arg(availableSymbols.join(", ")), Logger::Level::INFO);
+    Log.msg(FNAME + QString("Received dataReady signal. Symbols: %1").arg(availableSymbols.join(", ")), Logger::Level::DEBUG);
     m_availableDates = availableDatesPerSymbol; // Update cache
     populateSymbolComboBox(availableSymbols);   // Repopulate symbols (will trigger date update)
 }

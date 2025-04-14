@@ -72,6 +72,10 @@ public:
     void init(QPlainTextEdit* loggerWidget);
     void msg(const QString& msg, const Level level = Level::INFO);
     void setLevel(const Level level);
+    Level currentLevel();
+
+    static Level levelFromString(const QString& levelStr, Logger::Level defaultLevel = Logger::Level::INFO);
+    static QString levelToString(Logger::Level level);
 
     void closeLogger();
 };

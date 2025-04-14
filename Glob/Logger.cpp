@@ -7,6 +7,8 @@
 #include <QTextBlock>
 #include <QMutexLocker>
 #include <QDir>
+#include <QCoreApplication>
+#include <QThread>
 
 ///////////////////////////////////////////////////////////////////
 // Payload
@@ -87,6 +89,11 @@ void Logger::msg(const QString& msg, const Level level) {
         return;
     }
 
+    QMutexLocker locker(&m_logMutex); // Lock for writing
+
+    // Double check initialization after locking
+    if (!isInited) return;
+
     QString levelStr;
     QString styleStart = "";
     QString styleEnd = "";
@@ -113,8 +120,26 @@ void Logger::msg(const QString& msg, const Level level) {
         break;
     }
 
-    // Inverted for show newest messages on logs top
-    addHtmlInverted(styleStart + msg + styleEnd);
+    //////////////////
+    // Get pointers to the current thread and the application's main GUI thread
+    QThread* currentThread = QThread::currentThread();
+    QThread* mainGuiThread = QCoreApplication::instance() ? QCoreApplication::instance()->thread() : nullptr;
+
+    if (mainGuiThread && currentThread == mainGuiThread) {
+        // --- Current thread IS the main GUI thread ---
+        // Call the update function directly
+        addHtmlInverted(styleStart + msg + styleEnd);
+    }
+    else if (mainGuiThread) {
+        // Use invokeMethod to ensure thread-safety if msg can be called from other threads
+        QMetaObject::invokeMethod(loggetTextEdit, [=]() {
+            // Inverted for show newest messages on logs top
+            addHtmlInverted(styleStart + msg + styleEnd);
+            },
+            Qt::QueuedConnection // Queue to UI thread
+        );
+    }
+    //////////////////
 
     logToFile(msg, levelStr);
 }
@@ -163,11 +188,17 @@ void Logger::addHtmlInverted(const QString& htmlLine) {
 }
 
 void Logger::setLevel(const Level level) {
+    QMutexLocker locker(&m_logMutex);
     m_level = level;
 }
 
+Logger::Level Logger::currentLevel() {
+    QMutexLocker locker(&m_logMutex);
+    return m_level;
+}
+
 void Logger::logToFile(const QString& message, const QString& levelStr) {
-    QMutexLocker locker(&m_logMutex); // Lock for the duration of the write
+    //QMutexLocker locker(&m_logMutex); // Lock for the duration of the write
 
     if (!isInited) {
         return;
@@ -179,4 +210,26 @@ void Logger::logToFile(const QString& message, const QString& levelStr) {
     // Write formatted message and flush immediately
     // Qt::endl flushes automatically
     (*m_logStream) << "[" << timestamp << "] " << levelStr << " " << message << Qt::endl; 
+}
+
+// Helper function to convert string name to Level enum
+Logger::Level Logger::levelFromString(const QString& levelStr, Logger::Level defaultLevel) {
+    QString upperLevel = levelStr.toUpper().trimmed();
+    if (upperLevel == "DEBUG") return Level::DEBUG;
+    if (upperLevel == "INFO") return Level::INFO;
+    if (upperLevel == "WARNING" || upperLevel == "WARN") return Level::WARNING;
+    if (upperLevel == "ERROR") return Level::ERROR;
+    qWarning() << FNAME << "Unknown log level string:" << levelStr << ". Using default.";
+    return defaultLevel;
+}
+
+// Helper to get string representation for level
+QString Logger::levelToString(Logger::Level level) {
+    switch (level) {
+    case Level::DEBUG:    return "DEBUG";
+    case Level::INFO:     return "INFO";
+    case Level::WARNING:  return "WARNING";
+    case Level::ERROR:    return "ERROR";
+    default:              return "UNKN";
+    }
 }

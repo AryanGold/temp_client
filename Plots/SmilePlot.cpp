@@ -19,13 +19,12 @@ SmilePlot::SmilePlot(QWidget* parent)
 {
     m_chart = chart();
     setupChart();
-    Log.msg(FNAME + QString("Widget created using Qt Charts."), Logger::Level::INFO);
+    Log.msg(QString("Widget created using Qt Charts."), Logger::Level::DEBUG);
 }
 
 void SmilePlot::setupChart()
 {
     // --- This setup logic remains the same ---
-    Log.msg(FNAME + QString("Configuring chart appearance and series."), Logger::Level::DEBUG);
     m_chart->setTitle("Implied Volatility Smile");
     m_chart->legend()->setVisible(true); m_chart->legend()->setAlignment(Qt::AlignBottom);
     m_theoSeries = new QLineSeries(m_chart); m_askSeries = new QScatterSeries(m_chart); m_bidSeries = new QScatterSeries(m_chart);

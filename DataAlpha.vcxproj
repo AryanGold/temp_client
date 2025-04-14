@@ -69,6 +69,7 @@
   <ItemGroup>
     <ClCompile Include="Data\ClientReceiver.cpp" />
     <ClCompile Include="Data\SymbolDataManager.cpp" />
+    <ClCompile Include="Glob\Config.cpp" />
     <ClCompile Include="Glob\Logger.cpp" />
     <ClCompile Include="Network\WebSocketClient.cpp" />
     <ClCompile Include="Plots\SmilePlot.cpp" />
@@ -102,6 +103,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Defines.h" />
+    <ClInclude Include="Glob\Config.h" />
     <ClInclude Include="Glob\Glob.h" />
     <ClInclude Include="Glob\Logger.h" />
     <QtMoc Include="Plots\SmilePlot.h" />

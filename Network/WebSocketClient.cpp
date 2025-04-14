@@ -6,6 +6,7 @@
 #include <QJsonValue>
 #include <QDebug>
 #include <QAbstractSocket> // SocketError enum
+#include <QTimerEvent>
 
 WebSocketClient::WebSocketClient(QObject* parent) : QObject(parent) {
     connect(&m_webSocket, &QWebSocket::connected, this, &WebSocketClient::onConnected);
@@ -14,6 +15,11 @@ WebSocketClient::WebSocketClient(QObject* parent) : QObject(parent) {
     // Handle error signal correctly
     connect(&m_webSocket, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::errorOccurred),
         this, &WebSocketClient::onError);
+
+    // Setup reconnect timer
+    m_reconnectTimer.setInterval(RECONNECT_INTERVAL_MS);
+    m_reconnectTimer.setSingleShot(true); // Important: Fire only once per interval
+    connect(&m_reconnectTimer, &QTimer::timeout, this, &WebSocketClient::attemptConnection);
 
     // Register QVariantMap if passing it through signals/slots
     qRegisterMetaType<QVariantMap>("QVariantMap");
@@ -25,23 +31,70 @@ WebSocketClient::~WebSocketClient() {
 }
 
 void WebSocketClient::connectToServer(const QUrl& url) {
+    Log.msg(QString("WebSocketClient: Connecting to %1").arg(url.toString()), Logger::Level::INFO);
+
     if (m_isConnected || m_webSocket.state() == QAbstractSocket::ConnectingState) {
         Log.msg(FNAME + "WebSocketClient: Already connected or connecting.", Logger::Level::WARNING);
         return;
     }
     m_url = url;
+    m_explicitDisconnect = false; // Reset flag, we intend to connect
 
-    Log.msg(FNAME + QString("WebSocketClient: Connecting to %1").arg(url.toString()), Logger::Level::INFO);
-    m_webSocket.open(m_url);
+    // Stop any previous timer/connection attempts immediately
+    m_reconnectTimer.stop();
+    if (m_webSocket.state() != QAbstractSocket::UnconnectedState) {
+        Log.msg(FNAME + "Aborting previous socket connection.", Logger::Level::DEBUG);
+        m_webSocket.abort(); // Force close immediately
+    }
+    m_isConnected = false; // Ensure state is correct
+
+    // Start connection attempts immediately
+    startConnectionAttempts();
 }
 
 void WebSocketClient::disconnectFromServer() {
+    Log.msg(FNAME + "Explicit disconnect requested.", Logger::Level::DEBUG);
+
+    m_explicitDisconnect = true; // Set flag to prevent automatic reconnect
+    m_reconnectTimer.stop();     // Stop trying to reconnect
+
     if (m_webSocket.state() != QAbstractSocket::UnconnectedState) {
         m_webSocket.close(QWebSocketProtocol::CloseCodeNormal, "Client disconnecting");
     }
-    m_isConnected = false; // Ensure state is updated even if already closed
+    else {
+        // If already unconnected, ensure state is updated and disconnected signal emitted if needed
+        if (m_isConnected) {
+            m_isConnected = false;
+            emit disconnected(); // Emit signal if we thought we were connected
+        }
+    }
+    // onDisconnected slot will handle setting m_isConnected = false when socket confirms closure
 }
 
+void WebSocketClient::startConnectionAttempts() {
+    if (m_url.isEmpty() || !m_url.isValid()) {
+        Log.msg(FNAME + "Cannot start connection attempts: URL is invalid or empty.", Logger::Level::ERROR);
+        return;
+    }
+    if (m_isConnected) {
+        Log.msg(FNAME + "Already connected.", Logger::Level::DEBUG);
+        return;
+    }
+    if (m_reconnectTimer.isActive()) {
+        Log.msg(FNAME + "Connection attempts already in progress.", Logger::Level::DEBUG);
+        return;
+    }
+    m_explicitDisconnect = false; // We intend to connect
+
+    Log.msg("WebSocketClient: Starting connection attempts to " + m_url.toString(), Logger::Level::DEBUG);
+
+    // Trigger the first attempt immediately
+    attemptConnection();
+}
+
+bool WebSocketClient::isConnected() const {
+    return m_isConnected;
+}
 
 void WebSocketClient::addSymbol(const QString& symbol, const QString& model, const QVariantMap& settings) {
     Log.msg(FNAME + QString("WebSocketClient: Requesting add symbol[%1/%2]").arg(symbol, model), Logger::Level::DEBUG);
@@ -100,18 +153,52 @@ void WebSocketClient::resumeSymbol(const QString& symbol, const QString& model) 
 
 // --- Private Slots (Implement later with actual QWebSocket logic) ---
 
+void WebSocketClient::attemptConnection() {
+    if (m_explicitDisconnect || m_isConnected) {
+        Log.msg(FNAME + "WebSocketClient: Skipping connection attempt (explicit disconnect or already connected).", 
+            Logger::Level::DEBUG);
+        return; // Don't attempt if explicitly disconnected or already connected
+    }
+
+    if (m_webSocket.state() == QAbstractSocket::UnconnectedState) {
+        Log.msg("WebSocketClient: Attempting to connect to " + m_url.toString(), Logger::Level::DEBUG);
+        m_webSocket.open(m_url);
+    }
+    else {
+        Log.msg(FNAME + "WebSocketClient: Socket not in UnconnectedState (" + QString::number(m_webSocket.state()) + 
+            "), skipping connection attempt.", Logger::Level::DEBUG);
+        // Maybe schedule another check later if state is Connecting/Closing?
+        // For now, rely on disconnected/error signals to trigger next attempt.
+    }
+}
+
+
 void WebSocketClient::onConnected() {
-    Log.msg(FNAME + QString("WebSocketClient: Connected to server."), Logger::Level::DEBUG);
+    Log.msg("WebSocketClient: WebSocket connected successfully to " + m_url.toString(), Logger::Level::INFO);
     m_isConnected = true;
+    m_explicitDisconnect = false; // Connection successful, clear flag
+    m_reconnectTimer.stop(); // Stop timer, we are connected
     emit connected();
 }
 
 void WebSocketClient::onDisconnected() {
-    Log.msg(FNAME + QString("WebSocketClient: Disconnected to server."), Logger::Level::DEBUG);
-    m_isConnected = false;
-    emit disconnected();
+    // This slot is called both for clean disconnects and after errors that close the socket.
+    bool wasConnected = m_isConnected;
+    m_isConnected = false; // Update state regardless of reason
 
-    // Todo: attempt to reconnect here or signal the main application
+    if (m_explicitDisconnect) {
+        Log.msg(FNAME + "WebSocketClient: WebSocket disconnected (explicitly requested).", Logger::Level::INFO);
+    }
+    else {
+        Log.msg(FNAME + "WebSocketClient: WebSocket disconnected (unexpectedly or after error).", Logger::Level::DEBUG);
+        // Schedule a reconnect attempt only if it wasn't an explicit disconnect
+        scheduleReconnect();
+    }
+
+    // Emit signal only if we were previously connected
+    if (wasConnected) {
+        emit disconnected();
+    }
 }
 
 void WebSocketClient::onTextMessageReceived(const QString& message) {
@@ -127,7 +214,7 @@ void WebSocketClient::onError(QAbstractSocket::SocketError error) {
     }
     else {
         QString errorString = m_webSocket.errorString();
-        Log.msg(FNAME + QString("WebSocketClient: Error occurred '%1': %2").arg(error).arg(errorString),
+        Log.msg(FNAME + QString("WebSocketClient: Error occurred: %1").arg(errorString),
             Logger::Level::ERROR);
         emit errorOccurred(errorString);
     }
@@ -135,6 +222,20 @@ void WebSocketClient::onError(QAbstractSocket::SocketError error) {
 
 
 // --- Private Helpers ---
+
+void WebSocketClient::scheduleReconnect() {
+    if (m_explicitDisconnect) {
+        Log.msg(FNAME + "Reconnect suppressed due to explicit disconnect.", Logger::Level::DEBUG);
+        return; // Don't schedule if explicitly disconnected
+    }
+    if (m_reconnectTimer.isActive()) {
+        return; // Already scheduled
+    }
+
+    Log.msg("Scheduling connection attempt in " + QString::number(RECONNECT_INTERVAL_MS / 1000) + " s.", 
+        Logger::Level::INFO);
+    m_reconnectTimer.start(); // Start the single-shot timer
+}
 
 void WebSocketClient::sendJsonMessage(const QJsonObject& json) {
     if (!m_isConnected) {
