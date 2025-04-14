@@ -7,7 +7,6 @@
 #include <QMainWindow>
 #include <Qevent.h>
 #include <QUuid>
-#include <QVariant>
 #include <QScreen>
 #include <QRect> 
 #include <QGuiApplication> // For QGuiApplication::primaryScreen()
@@ -256,8 +255,7 @@ QMainWindow* WindowManager::createNewDynamicWindow(const QString& objectId, cons
 }
 
 
-void WindowManager::handleDynamicWindowDestroyed(QObject* obj /* Optional */) {
-    Log.msg(FNAME + "G1 - Slot Triggered", Logger::Level::DEBUG);
+void WindowManager::handleDynamicWindowDestroyed(QObject* obj) {
     QObject* senderObj = sender();
     if (!senderObj) {
         Log.msg(FNAME + "Signal received, but sender() returned null!", Logger::Level::ERROR);
@@ -268,26 +266,25 @@ void WindowManager::handleDynamicWindowDestroyed(QObject* obj /* Optional */) {
     QString senderClassName = senderObj->metaObject()->className();
     QString senderObjectName = senderObj->objectName();
     quintptr senderPtrAddr = reinterpret_cast<quintptr>(senderObj);
-    Log.msg(FNAME + "Sender Info - Type: " + senderClassName + ", Name: " + senderObjectName + ", Addr: " + QString("0x%1").arg(senderPtrAddr, 0, 16), Logger::Level::DEBUG);
 
 
     // --- Attempt direct cast FIRST (might work sometimes) ---
     QMainWindow* mainWindow = qobject_cast<QMainWindow*>(senderObj);
     if (mainWindow) {
-        Log.msg(FNAME + "Sender IS QMainWindow. Removing directly.", Logger::Level::DEBUG);
         bool removed = m_dynamicWindows.removeOne(mainWindow);
-        Log.msg(FNAME + "After direct removal attempt. Dynamic count: " + QString::number(m_dynamicWindows.count()), Logger::Level::DEBUG);
         if (removed) {
             Log.msg(FNAME + "Stopped tracking window (direct): " + mainWindow->objectName(), Logger::Level::DEBUG);
         }
         else {
-            Log.msg(FNAME + "Attempted to stop tracking untracked window (direct sender): " + mainWindow->objectName(), Logger::Level::WARNING);
+            Log.msg(FNAME + "Attempted to stop tracking untracked window (direct sender): " + mainWindow->objectName(), 
+                Logger::Level::WARNING);
         }
         return; // Done
     }
 
     // --- If direct cast failed, Log and try removal by matching pointer address ---
-    Log.msg(FNAME + "Sender was not castable to QMainWindow. Attempting removal by pointer address matching.", Logger::Level::WARNING);
+    Log.msg(FNAME + "Sender was not castable to QMainWindow. Attempting removal by pointer address matching.", 
+        Logger::Level::WARNING);
 
     bool removedByAddress = false;
     for (int i = m_dynamicWindows.size() - 1; i >= 0; --i) {
@@ -301,13 +298,13 @@ void WindowManager::handleDynamicWindowDestroyed(QObject* obj /* Optional */) {
         }
     }
 
-    Log.msg(FNAME + "After removal by address attempt. Dynamic count: " + QString::number(m_dynamicWindows.count()), Logger::Level::DEBUG);
     if (removedByAddress) {
         Log.msg(FNAME + "Stopped tracking window (by address): " + senderObjectName, Logger::Level::DEBUG); // Use sender's name for logging
     }
     else {
         // This indicates a bigger issue - the pointer wasn't in the list, or sender() is somehow wrong
-        Log.msg(FNAME + "FAILED to find window in list matching sender address! Sender: " + senderObjectName, Logger::Level::ERROR);
+        Log.msg(FNAME + "FAILED to find window in list matching sender address! Sender: " + senderObjectName, 
+            Logger::Level::ERROR);
     }
 }
 

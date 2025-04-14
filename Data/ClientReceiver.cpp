@@ -1,5 +1,6 @@
 #include "ClientReceiver.h"
 #include "ArchiveHelper.h"
+#include "Glob/Logger.h"
 
 #include <QJsonValue>
 #include <QByteArray>
@@ -7,6 +8,7 @@
 #include <QStringList>
 #include <QDebug>
 #include <QColor>
+
 
 ClientReceiver::ClientReceiver(QObject* parent)
     : QAbstractTableModel(parent)

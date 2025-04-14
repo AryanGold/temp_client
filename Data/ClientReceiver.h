@@ -6,8 +6,8 @@
 #include <QVariant>
 #include <QStringList>
 #include <QJsonObject> 
+#include <QMutex>
 
-class QJsonObject;
 
 class ClientReceiver : public QAbstractTableModel
 {

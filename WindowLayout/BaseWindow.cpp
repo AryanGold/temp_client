@@ -81,20 +81,6 @@ void BaseWindow::loadSettings()
     }
 }
 
-void BaseWindow::saveSettings()
-{
-    // Save geometry specifically for this window instance when it's closed/moved
-    QSettings settings;
-    QString settingsGroup = "WindowState/" + objectName(); // Use the same unique group prefix
-
-    qDebug() << "BaseWindow::saveSettings for" << objectName() << "to group" << settingsGroup;
-
-    settings.beginGroup(settingsGroup);
-    settings.setValue("geometry", saveGeometry());
-    // Don't save isVisible here, let WindowManager::saveWindowStates handle that
-    settings.endGroup();
-}
-
 void BaseWindow::closeEvent(QCloseEvent* event)
 {
     // Call WindowManager to set the closing flag

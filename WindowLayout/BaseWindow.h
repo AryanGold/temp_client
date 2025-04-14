@@ -19,7 +19,6 @@ protected:
 
 private:
     void loadSettings();
-    void saveSettings();
 
     QString windowName;
     WindowManager* m_windowManager = nullptr;

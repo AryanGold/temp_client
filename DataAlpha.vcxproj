@@ -26,7 +26,7 @@
   </ImportGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'" Label="QtSettings">
     <QtInstall>Qt6.8.3</QtInstall>
-    <QtModules>core;gui;websockets;widgets</QtModules>
+    <QtModules>core;gui;widgets;websockets;charts;datavisualization</QtModules>
     <QtBuildConfig>release</QtBuildConfig>
   </PropertyGroup>
   <Target Name="QtMsBuildNotFound" BeforeTargets="CustomBuild;ClCompile" Condition="!Exists('$(QtMsBuild)\qt.targets') or !Exists('$(QtMsBuild)\qt.props')">
@@ -71,6 +71,7 @@
     <ClCompile Include="Data\SymbolDataManager.cpp" />
     <ClCompile Include="Glob\Logger.cpp" />
     <ClCompile Include="Network\WebSocketClient.cpp" />
+    <ClCompile Include="Plots\SmilePlot.cpp" />
     <ClCompile Include="WindowLayout\BaseWindow.cpp" />
     <ClCompile Include="WindowLayout\LogWindow.cpp" />
     <ClCompile Include="WindowLayout\QuoteChartWindow.cpp" />
@@ -103,6 +104,7 @@
     <ClInclude Include="Defines.h" />
     <ClInclude Include="Glob\Glob.h" />
     <ClInclude Include="Glob\Logger.h" />
+    <ClInclude Include="Plots\SmilePlot.h" />
     <QtMoc Include="WindowLayout\LogWindow.h" />
     <QtMoc Include="Data\ClientReceiver.h" />
     <ClInclude Include="Data\ArchiveHelper.h" />
