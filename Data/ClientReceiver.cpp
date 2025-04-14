@@ -1,8 +1,8 @@
 
 #include "ClientReceiver.h"
 #include "Glob/Logger.h"
+#include "libs/Compressor.h"
 
-#include <zlib.h> 
 #include <QJsonValue>
 #include <QByteArray>
 #include <QDateTime>
@@ -12,78 +12,6 @@
 #include <QTextStream>
 #include <limits>
 #include <vector> // For zlib buffer
-
-// --- ZLIB Decompression Helper ---
-#define ZLIB_CHUNK_SIZE 16384 // Process 16KB chunks
-
-QByteArray ClientReceiver::decompressZlib(const QByteArray& compressedData) {
-    if (compressedData.isEmpty()) {
-        return QByteArray();
-    }
-
-    z_stream strm;
-    strm.zalloc = Z_NULL;
-    strm.zfree = Z_NULL;
-    strm.opaque = Z_NULL;
-    strm.avail_in = 0;
-    strm.next_in = Z_NULL;
-
-    int ret = inflateInit(&strm);
-    if (ret != Z_OK) {
-        Log.msg(FNAME + QString("zlib inflateInit failed with error code: %1").arg(ret), Logger::Level::ERROR);
-        return QByteArray(); // Return empty on init error
-    }
-
-    QByteArray decompressedResult;
-    // Reserve space heuristically (e.g., assume 5x compression ratio)
-    decompressedResult.reserve(compressedData.size() * 5);
-    std::vector<Bytef> outBuffer(ZLIB_CHUNK_SIZE);
-
-    strm.avail_in = compressedData.size();
-    // Need non-const pointer for zlib C API
-    strm.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(compressedData.constData()));
-
-    // Run inflate() on input until output buffer is not full or end of stream
-    do {
-        strm.avail_out = ZLIB_CHUNK_SIZE;
-        strm.next_out = outBuffer.data(); // Use .data() for pointer
-
-        ret = inflate(&strm, Z_NO_FLUSH);
-        switch (ret) {
-        case Z_NEED_DICT:
-            ret = Z_DATA_ERROR; // Dictionary needed error -> treat as data error
-            [[fallthrough]]; // Intentional fallthrough
-        case Z_DATA_ERROR:
-        case Z_MEM_ERROR:
-        case Z_STREAM_ERROR: // Include stream error
-            Log.msg(FNAME + QString("zlib inflate failed with error code: %1, msg: %2")
-                .arg(ret).arg(strm.msg ? strm.msg : "N/A"), Logger::Level::ERROR);
-            inflateEnd(&strm);
-            return QByteArray(); // Return empty on error
-        }
-
-        // Calculate how much data was actually decompressed in this chunk
-        unsigned int have = ZLIB_CHUNK_SIZE - strm.avail_out;
-        if (have > 0) {
-            // Append the valid data from outBuffer to our result QByteArray
-            decompressedResult.append(reinterpret_cast<const char*>(outBuffer.data()), have);
-        }
-    } while (strm.avail_out == 0); // Continue if the output buffer was filled completely
-
-    // Clean up
-    inflateEnd(&strm);
-
-    // Check if stream ended properly (could potentially have ended mid-chunk)
-    if (ret != Z_STREAM_END) {
-        Log.msg(FNAME + QString("zlib inflate finished, but stream did not end properly (final ret code: %1). Data might be incomplete or corrupt.")
-            .arg(ret), Logger::Level::WARNING);
-    }
-
-    Log.msg(FNAME + QString("Decompressed data size: %1 bytes.").arg(decompressedResult.size()), Logger::Level::DEBUG);
-    return decompressedResult;
-}
-// --- End ZLIB Helper ---
-
 
 ClientReceiver::ClientReceiver(QObject* parent) : QObject(parent) {
 }
@@ -137,7 +65,7 @@ void ClientReceiver::processWebSocketMessage(const QString& symbol, const QStrin
         QString compressedDataB64 = compressedDataValue.toString();
         if (!compressedDataB64.isEmpty()) {
             QByteArray compressedBytes = QByteArray::fromBase64(compressedDataB64.toLatin1());
-            decompressedBytes = decompressZlib(compressedBytes);
+            decompressedBytes = Compressor::decompressZlib(compressedBytes);
             if (decompressedBytes.isNull() && !compressedBytes.isEmpty()) {
                 Log.msg(FNAME + QString("Failed to decompress data for symbol '%1'.").arg(symbol), Logger::Level::ERROR);
                 return;

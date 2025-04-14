@@ -54,8 +54,5 @@ private:
     mutable QMutex m_dataMutex; // Protect access across threads
 
     // Helper function to parse CSV and populate internal storage
-    bool parseAndLoadData(const QByteArray& decompressedCsvData, QMap<QString, QMap<QDate, SmileData>>& outData); // Pass temp map
-
-    // Helper for zlib decompression (or include from utility)
-    QByteArray decompressZlib(const QByteArray& compressedData);
+    bool parseAndLoadData(const QByteArray& decompressedCsvData, QMap<QString, QMap<QDate, SmileData>>& outData);
 };

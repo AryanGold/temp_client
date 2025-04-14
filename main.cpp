@@ -120,35 +120,11 @@ int main(int argc, char *argv[])
 //////////////////////////////////////////
 // For Local test
 
-// --- ZLIB/Compress Helper ---
-#include <zlib.h>
+#include "libs/Compressor.h"
+
 #include <vector>
 #include <QFile>
 #include <QDebug>
-#define ZLIB_CHUNK_SIZE 16384
-
-// --- ZLIB/Compress Helper Implementation ---
-QByteArray compressZlib(const QByteArray& inputData, int level) {
-    if (inputData.isEmpty()) return QByteArray();
-    if (level < -1 || level > 9) level = Z_DEFAULT_COMPRESSION;
-    z_stream strm; strm.zalloc = Z_NULL; strm.zfree = Z_NULL; strm.opaque = Z_NULL;
-    int ret = deflateInit(&strm, level);
-    if (ret != Z_OK) { Log.msg("[compressZlib] deflateInit failed.", Logger::Level::ERROR); return QByteArray(); }
-    QByteArray compressedResult; compressedResult.reserve(inputData.size() / 2);
-    std::vector<Bytef> outBuffer(ZLIB_CHUNK_SIZE);
-    strm.avail_in = inputData.size();
-    strm.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(inputData.constData()));
-    do {
-        strm.avail_out = ZLIB_CHUNK_SIZE; strm.next_out = outBuffer.data();
-        ret = deflate(&strm, (strm.avail_in == 0) ? Z_FINISH : Z_NO_FLUSH);
-        if (ret == Z_STREAM_ERROR) { Log.msg("[compressZlib] deflate failed.", Logger::Level::ERROR); deflateEnd(&strm); return QByteArray(); }
-        unsigned int have = ZLIB_CHUNK_SIZE - strm.avail_out;
-        if (have > 0) compressedResult.append(reinterpret_cast<const char*>(outBuffer.data()), have);
-    } while (strm.avail_out == 0);
-    if (ret != Z_STREAM_END) { Log.msg("[compressZlib] deflate did not end stream properly.", Logger::Level::WARNING); }
-    deflateEnd(&strm);
-    return compressedResult;
-}
 
 // --- Test Data Generation Implementation ---
 QByteArray loadCsvDataFromFile(const QString& filename) {
@@ -157,15 +133,15 @@ QByteArray loadCsvDataFromFile(const QString& filename) {
         Log.msg(QString("[main] Failed to open test CSV file: %1").arg(filename), Logger::Level::ERROR);
         return QByteArray();
     }
-    Log.msg(QString("[main] Loading test data from: %1").arg(filename), Logger::Level::INFO);
     QByteArray data = file.readAll();
+    Log.msg(QString("[main] Loading test data from: %1, bytes[%2]").arg(filename).arg(data.size()), Logger::Level::INFO);
     file.close();
     return data;
 }
 
 QJsonObject generateTestDataFromCsv(const QByteArray& csvDataBytes) {
     if (csvDataBytes.isEmpty()) { return QJsonObject(); }
-    QByteArray compressedBytes = compressZlib(csvDataBytes, 6);
+    QByteArray compressedBytes = Compressor::compressZlib(csvDataBytes);
     if (compressedBytes.isEmpty() && !csvDataBytes.isEmpty()) { Log.msg(QString("[main] Test data compression failed!"), Logger::Level::ERROR); return QJsonObject(); }
     QString compressedDataB64 = QString::fromLatin1(compressedBytes.toBase64());
     QJsonObject message;
