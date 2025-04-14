@@ -104,7 +104,7 @@
     <ClInclude Include="Defines.h" />
     <ClInclude Include="Glob\Glob.h" />
     <ClInclude Include="Glob\Logger.h" />
-    <ClInclude Include="Plots\SmilePlot.h" />
+    <QtMoc Include="Plots\SmilePlot.h" />
     <QtMoc Include="WindowLayout\LogWindow.h" />
     <QtMoc Include="Data\ClientReceiver.h" />
     <ClInclude Include="Data\ArchiveHelper.h" />

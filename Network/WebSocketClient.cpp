@@ -1,4 +1,6 @@
 #include "WebSocketClient.h"
+#include "Glob/Logger.h"
+
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -15,6 +17,7 @@ WebSocketClient::WebSocketClient(QObject* parent) : QObject(parent) {
 
     // Register QVariantMap if passing it through signals/slots
     qRegisterMetaType<QVariantMap>("QVariantMap");
+    qRegisterMetaType<QJsonObject>("QJsonObject");
 }
 
 WebSocketClient::~WebSocketClient() {
@@ -23,11 +26,12 @@ WebSocketClient::~WebSocketClient() {
 
 void WebSocketClient::connectToServer(const QUrl& url) {
     if (m_isConnected || m_webSocket.state() == QAbstractSocket::ConnectingState) {
-        qWarning() << "WebSocketClient: Already connected or connecting.";
+        Log.msg(FNAME + "WebSocketClient: Already connected or connecting.", Logger::Level::WARNING);
         return;
     }
     m_url = url;
-    qInfo() << "WebSocketClient: Connecting to" << url.toString();
+
+    Log.msg(FNAME + QString("WebSocketClient: Connecting to %1").arg(url.toString()), Logger::Level::INFO);
     m_webSocket.open(m_url);
 }
 
@@ -40,7 +44,7 @@ void WebSocketClient::disconnectFromServer() {
 
 
 void WebSocketClient::addSymbol(const QString& symbol, const QString& model, const QVariantMap& settings) {
-    qInfo() << "WebSocketClient: Requesting add symbol:" << symbol << model;
+    Log.msg(FNAME + QString("WebSocketClient: Requesting add symbol[%1/%2]").arg(symbol, model), Logger::Level::DEBUG);
 
     QJsonObject dataObject;
     dataObject["symbol_name"] = symbol;
@@ -56,7 +60,7 @@ void WebSocketClient::addSymbol(const QString& symbol, const QString& model, con
 }
 
 void WebSocketClient::removeSymbol(const QString& symbol, const QString& model) {
-    qInfo() << "WebSocketClient: Requesting remove symbol:" << symbol << model;
+    Log.msg(FNAME + QString("WebSocketClient: Requesting remove symbol[%1/%2]").arg(symbol, model), Logger::Level::DEBUG);
 
     QJsonObject dataObject;
     dataObject["symbol_name"] = symbol;
@@ -71,7 +75,7 @@ void WebSocketClient::removeSymbol(const QString& symbol, const QString& model) 
 }
 
 void WebSocketClient::updateSymbolSettings(const QString& symbol, const QString& model, const QVariantMap& settings) {
-    qInfo() << "WebSocketClient: Requesting update settings for:" << symbol << model;
+    Log.msg(FNAME + QString("WebSocketClient: Requesting update symbol[%1/%2]").arg(symbol, model), Logger::Level::DEBUG);
     QJsonObject dataObject;
     dataObject["symbol_name"] = symbol;
     dataObject["model_name"] = model;
@@ -86,27 +90,24 @@ void WebSocketClient::updateSymbolSettings(const QString& symbol, const QString&
 }
 
 void WebSocketClient::pauseSymbol(const QString& symbol, const QString& model) {
-    qInfo() << "WebSocketClient: Requesting pause symbol:" << symbol << model;
-
+    Log.msg(FNAME + QString("WebSocketClient: Requesting pause symbol[%1/%2]").arg(symbol, model), Logger::Level::DEBUG);
 }
 
 void WebSocketClient::resumeSymbol(const QString& symbol, const QString& model) {
-    qInfo() << "WebSocketClient: Requesting resume symbol:" << symbol << model;
-
-
+    Log.msg(FNAME + QString("WebSocketClient: Requesting resume symbol[%1/%2]").arg(symbol, model), Logger::Level::DEBUG);
 }
 
 
 // --- Private Slots (Implement later with actual QWebSocket logic) ---
 
 void WebSocketClient::onConnected() {
-    qInfo() << "WebSocketClient: Connected to server.";
+    Log.msg(FNAME + QString("WebSocketClient: Connected to server."), Logger::Level::DEBUG);
     m_isConnected = true;
     emit connected();
 }
 
 void WebSocketClient::onDisconnected() {
-    qInfo() << "WebSocketClient: Disconnected from server.";
+    Log.msg(FNAME + QString("WebSocketClient: Disconnected to server."), Logger::Level::DEBUG);
     m_isConnected = false;
     emit disconnected();
 
@@ -121,11 +122,13 @@ void WebSocketClient::onTextMessageReceived(const QString& message) {
 void WebSocketClient::onError(QAbstractSocket::SocketError error) {
     // Avoid logging "RemoteHostClosedError" as a critical error if it happens during normal disconnect
     if (error == QAbstractSocket::RemoteHostClosedError && !m_isConnected) {
-        qInfo() << "WebSocketClient: Connection closed by remote host (expected during disconnect).";
+        Log.msg(FNAME + QString("WebSocketClient: Connection closed by remote host (expected during disconnect)."), 
+            Logger::Level::INFO);
     }
     else {
         QString errorString = m_webSocket.errorString();
-        qWarning() << "WebSocketClient: Error occurred:" << error << "-" << errorString;
+        Log.msg(FNAME + QString("WebSocketClient: Error occurred '%1': %2").arg(error).arg(errorString),
+            Logger::Level::ERROR);
         emit errorOccurred(errorString);
     }
 }
@@ -135,7 +138,7 @@ void WebSocketClient::onError(QAbstractSocket::SocketError error) {
 
 void WebSocketClient::sendJsonMessage(const QJsonObject& json) {
     if (!m_isConnected) {
-        qWarning() << "WebSocketClient: Cannot send message, not connected.";
+        Log.msg(FNAME + QString("WebSocketClient: Cannot send message, not connected."),Logger::Level::WARNING);
         return;
     }
     QJsonDocument doc(json);
@@ -147,7 +150,7 @@ void WebSocketClient::sendJsonMessage(const QJsonObject& json) {
 void WebSocketClient::parseIncomingMessage(const QString& message) {
     QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8());
     if (doc.isNull() || !doc.isObject()) {
-        qWarning() << "WebSocketClient: Received invalid JSON:" << message;
+        Log.msg(FNAME + QString("WebSocketClient: Received invalid JSON: %1").arg(message), Logger::Level::WARNING);
         return;
     }
 
@@ -165,10 +168,11 @@ void WebSocketClient::parseIncomingMessage(const QString& message) {
         tickerFields.remove("model_name");
 
         if (!symbol.isEmpty() && !model.isEmpty()) {
-            emit tickerDataReceived(symbol, model, tickerFields);
+            emit tickerDataReceived(symbol, model, obj);
         }
         else {
-            qWarning() << "WebSocketClient: Received ticker data with missing symbol/model:" << message;
+            Log.msg(FNAME + QString("WebSocketClient: Received ticker data with missing symbol/model: %1").arg(message), 
+                Logger::Level::WARNING);
         }
     }
     else if (type == "symbol_response") { 
@@ -193,6 +197,7 @@ void WebSocketClient::parseIncomingMessage(const QString& message) {
         }
     }
     else {
-        qWarning() << "WebSocketClient: Received unhandled message type:" << type;
+        Log.msg(FNAME + QString("WebSocketClient: Received unhandled message type: %1").arg(type),
+            Logger::Level::WARNING);
     }
 }

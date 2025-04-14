@@ -1,38 +1,61 @@
 #pragma once
 
-#include <QAbstractTableModel>
+#include <QObject>
 #include <QMap>
 #include <QVector>
 #include <QVariant>
 #include <QStringList>
-#include <QJsonObject> 
-#include <QMutex>
+#include <QDate>
+#include <QJsonObject>
+#include <QMutex> // For thread safety
 
+// Forward declaration
+class QJsonObject;
 
-class ClientReceiver : public QAbstractTableModel
+// Structure to hold parsed data for a specific expiration date
+struct SmileData {
+    QVector<double> strikes;
+    QVector<double> theoIvs;
+    QVector<double> askIvs;
+    QVector<double> bidIvs;
+    QStringList tooltips; // Pre-generate tooltips here
+    bool isValid = false;
+};
+
+class ClientReceiver : public QObject
 {
     Q_OBJECT
 
 public:
     explicit ClientReceiver(QObject* parent = nullptr);
-    ~ClientReceiver() override = default; // Use default destructor
+    ~ClientReceiver() override = default;
 
-    // --- QAbstractTableModel overrides ---
-    int rowCount(const QModelIndex& parent = QModelIndex()) const override;
-    int columnCount(const QModelIndex& parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
-    QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
+    // Public method to get the smile data for plotting
+    SmileData getSmileData(const QString& symbol, const QDate& expirationDate) const;
+
+    // Public method to get currently available symbols
+    QStringList getAvailableSymbols() const;
+
+    // Public method to get available expiration dates for a symbol
+    QList<QDate> getAvailableExpirationDates(const QString& symbol) const;
+
+
+signals:
+    // Emitted when new data has been processed and is ready
+    void dataReady(const QStringList& availableSymbols, const QMap<QString, QList<QDate>>& availableDatesPerSymbol);
 
 public slots:
     // Slot to receive the incoming JSON message containing compressed data
-    void processWebSocketMessage(const QJsonObject& message);
+    void processWebSocketMessage(const QString& symbol, const QString& model, const QJsonObject& data);
 
 private:
-    // Internal data storage: Column names mapped to vectors of cell data
-    QMap<QString, QVector<QVariant>> m_tableData;
-    // List to maintain the order of column headers
-    QStringList m_columnHeaders;
+    // Internal data storage: Symbol -> ExpirationDate -> SmileData
+    QMap<QString, QMap<QDate, SmileData>> m_dataStore;
+    mutable QMutex m_dataMutex; // Protect access across threads
 
     // Helper function to parse CSV and populate internal storage
-    bool parseAndLoadData(const QByteArray& decompressedCsvData);
+    bool parseAndLoadData(const QByteArray& decompressedCsvData, QMap<QString, QMap<QDate, SmileData>>& outData); // Pass temp map
+
+    // Helper for zlib decompression (or include from utility)
+    QByteArray decompressZlib(const QByteArray& compressedData);
 };

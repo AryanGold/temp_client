@@ -27,7 +27,7 @@ public:
 
 signals:
     // Signals data *received* from the WebSocket server
-    void tickerDataReceived(const QString& symbol, const QString& model, const QVariantMap& data);
+    void tickerDataReceived(const QString& symbol, const QString& model, const QJsonObject& data);
     void symbolAddConfirmed(const QString& symbol, const QString& model); // Example confirmation
     void symbolRemoveConfirmed(const QString& symbol, const QString& model); // Example confirmation
     void symbolUpdateConfirmed(const QString& symbol, const QString& model); // Example confirmation

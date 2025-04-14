@@ -1,3 +1,4 @@
+#include "Glob/Glob.h"
 #include "Glob/Logger.h"
 #include "../Defines.h"
 #include "WindowManager.h"
@@ -113,8 +114,8 @@ void WindowManager::handleFocusChanged(QWidget* oldFocus, QWidget* newFocus) {
 
     if (topLevelWidget) {
         QString topLevelClassName = topLevelWidget ? topLevelWidget->metaObject()->className() : "None";
-        QString msg = QString("Focus changed: %1").arg(topLevelClassName);
-        Log.msg(FNAME + msg, Logger::Level::DEBUG);
+        //QString msg = QString("Focus changed: %1").arg(topLevelClassName);
+        //Log.msg(FNAME + msg, Logger::Level::DEBUG);
     }
 
     if (activatedWindow) {
@@ -215,7 +216,7 @@ QMainWindow* WindowManager::createNewDynamicWindow(const QString& objectId, cons
 
     // Also update in: restoreWindowStates()
     if (wType == "QuoteChartWindow") {
-        window = new QuoteChartWindow(this, nullptr);
+        window = new QuoteChartWindow(this, Glob.dataReceiver, nullptr);
         title = "Plot chart";
     }
     else if (wType == "TakesPageWindow") {

@@ -7,6 +7,7 @@
 #include "WindowLayout/WatchlistWindow/WatchlistWindow.h"
 #include "WindowLayout/LogWindow.h"
 
+#include "Data/ClientReceiver.h"
 #include "Data/SymbolDataManager.h"
 #include "Network/WebSocketClient.h"
 
@@ -15,9 +16,7 @@
 #include <QScreen>
 #include <QSessionManager>
 #include <QGuiApplication>
-
-SymbolDataManager* dataManager = nullptr;
-WebSocketClient* wsClient = nullptr;
+#include <QObject>
 
 int main(int argc, char *argv[])
 {
@@ -41,13 +40,20 @@ int main(int argc, char *argv[])
     QSettings pathFinder;
     Log.msg("Settings file location: " + pathFinder.fileName());
 
+    ///////////
+    // Data pipeline
     // Create core components (ensure they exist before windows are created/restored)
-    dataManager = new SymbolDataManager(&app); 
-    wsClient = new WebSocketClient(&app);
+    Glob.dataManager = new SymbolDataManager(&app);
+    Glob.dataReceiver = new ClientReceiver();
+    Glob.wsClient = new WebSocketClient(&app);
+
+    QObject::connect(Glob.wsClient, &WebSocketClient::tickerDataReceived,
+                     Glob.dataReceiver, &ClientReceiver::processWebSocketMessage);
+    ///////////
 
     // Main windows
     ToolPanelWindow toolPanel(&windowManager);
-    WatchlistWindow watchlist(dataManager, wsClient, &windowManager);
+    WatchlistWindow watchlist(Glob.dataManager, Glob.wsClient, &windowManager);
 
     windowManager.registerWindow(&toolPanel, "ToolPanel");
     windowManager.registerWindow(&watchlist, "Watchlist");
