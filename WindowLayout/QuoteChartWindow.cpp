@@ -14,12 +14,15 @@
 #include <QLabel> 
 #include <QCloseEvent>
 #include <QStatusBar>
+#include <QToolButton>
+#include <QButtonGroup>
 
 QuoteChartWindow::QuoteChartWindow(WindowManager* windowManager, ClientReceiver* clientReceiver, QWidget* parent)
     : BaseWindow("QuoteChart", windowManager, parent),
     m_clientReceiver(clientReceiver)
 {
     Log.msg(FNAME + QString("Creating main chart window..."), Logger::Level::DEBUG);
+    
     if (!m_clientReceiver) {
         Log.msg(FNAME + QString("FATAL: ClientReceiver pointer is null! UI will not function correctly."), 
             Logger::Level::ERROR);
@@ -54,7 +57,7 @@ void QuoteChartWindow::setupUi() {
     Log.msg(FNAME + QString("Setting up UI elements."), Logger::Level::DEBUG);
     setWindowTitle("Volatility Smile Plot (Qt Charts)");
     resize(900, 700);
-
+    
     m_centralWidget = new QWidget(this);
     m_mainLayout = new QVBoxLayout(m_centralWidget);
 
@@ -63,22 +66,30 @@ void QuoteChartWindow::setupUi() {
     m_symbolCombo = new QComboBox(m_centralWidget);
     m_dateCombo = new QComboBox(m_centralWidget);
     m_recalibrateButton = new QPushButton("Recalibrate", m_centralWidget);
+
     m_resetZoomButton = new QPushButton("Reset Zoom", m_centralWidget); 
     m_resetZoomButton->setToolTip("Reset plot zoom and pan to default view");
-
+    
+    ////////////////////
+    setupModeButtons(); // Create Pan/Zoom buttons
+    ////////////////////
+    
     m_controlsLayout->addWidget(new QLabel("Symbol:", m_centralWidget));
     m_controlsLayout->addWidget(m_symbolCombo);
     m_controlsLayout->addSpacing(20);
     m_controlsLayout->addWidget(new QLabel("Expiration:", m_centralWidget));
     m_controlsLayout->addWidget(m_dateCombo);
+    m_controlsLayout->addSpacing(20);
+    m_controlsLayout->addWidget(m_panButton);
+    m_controlsLayout->addWidget(m_zoomButton);
     m_controlsLayout->addStretch(1);
     m_controlsLayout->addWidget(m_resetZoomButton);
     m_controlsLayout->addSpacing(20);
     m_controlsLayout->addWidget(m_recalibrateButton);
-
+    
     // Plot Widget (Qt Charts based SmilePlot)
     m_smilePlot = new SmilePlot(m_centralWidget);
-
+    
     m_mainLayout->addLayout(m_controlsLayout);
     m_mainLayout->addWidget(m_smilePlot, 1); // Plot takes stretch space
 
@@ -285,4 +296,67 @@ void QuoteChartWindow::onResetZoomClicked()
     else {
         Log.msg(FNAME + QString("Cannot reset zoom: SmilePlot widget is null."), Logger::Level::WARNING);
     }
+}
+
+void QuoteChartWindow::setupModeButtons() {
+    // Create buttons (parented to this SmilePlot widget)
+    m_panButton = new QToolButton(m_centralWidget);
+    m_panButton->setIcon(QIcon(":/icons/resources/icons/buttons/pan_icon.png"));
+    m_panButton->setToolTip("Pan Mode (Click and drag chart)");
+    m_panButton->setCheckable(true);
+    m_panButton->setAutoRaise(true);
+    m_panButton->setFixedSize(24, 24);
+    m_panButton->setIconSize(QSize(20, 20));
+
+    m_zoomButton = new QToolButton(m_centralWidget);
+    m_zoomButton->setIcon(QIcon(":/icons/resources/icons/buttons/zoom.png"));
+    m_zoomButton->setToolTip("Zoom Mode (Click and drag to select region)");
+    m_zoomButton->setCheckable(true);
+    m_zoomButton->setAutoRaise(true);
+    m_zoomButton->setFixedSize(24, 24);
+    m_zoomButton->setIconSize(QSize(20, 20));
+
+    // Group buttons for exclusive selection
+    m_modeButtons = new QButtonGroup(this);
+    m_modeButtons->addButton(m_panButton, SmilePlot::PlotMode::pmPan);
+    m_modeButtons->addButton(m_zoomButton, SmilePlot::PlotMode::pmZoom);
+    m_modeButtons->setExclusive(true);
+
+    // Connect signal for mode changes
+    connect(m_modeButtons, &QButtonGroup::idClicked, this, &QuoteChartWindow::onModeButtonClicked);
+
+    m_panButton->show();
+    m_zoomButton->show();
+}
+
+void QuoteChartWindow::setMode(SmilePlot::PlotMode mode) {
+    if (m_smilePlot->currentMode() == mode && m_modeButtons->checkedButton()) return;
+
+    Log.msg(FNAME + "Setting plot mode to " + (mode == SmilePlot::PlotMode::pmPan ? "Pan" : "Zoom"), Logger::Level::DEBUG);
+    m_smilePlot->setCurrentMode(mode);
+    applyCurrentInteractionMode();
+
+    // Update button checked state
+    if (m_modeButtons) {
+        QAbstractButton* buttonToCheck = m_modeButtons->button(mode);
+        if (buttonToCheck && !buttonToCheck->isChecked()) {
+            buttonToCheck->setChecked(true);
+        }
+    }
+}
+
+void QuoteChartWindow::applyCurrentInteractionMode() {
+    if (m_smilePlot->currentMode() == SmilePlot::PlotMode::pmPan) {
+        m_smilePlot->chartView()->setDragMode(QGraphicsView::ScrollHandDrag); // cursor for panning
+        m_smilePlot->chartView()->setRubberBand(QChartView::NoRubberBand); // Disable rubber band
+    }
+    else { // pmZoom
+        m_smilePlot->chartView()->setDragMode(QGraphicsView::NoDrag); // Disable chart view's panning
+        m_smilePlot->chartView()->setRubberBand(QChartView::RectangleRubberBand); // Enable rubber band for zooming
+        m_smilePlot->chartView()->setCursor(Qt::CrossCursor); // Show cross cursor for zoom
+    }
+}
+
+void QuoteChartWindow::onModeButtonClicked(int id) {
+    setMode(static_cast<SmilePlot::PlotMode>(id));
 }

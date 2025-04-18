@@ -1,6 +1,14 @@
 #include "SmilePlot.h"
 #include "Glob/Logger.h"
 
+#include <QVBoxLayout>
+#include <QToolButton>
+#include <QButtonGroup>
+#include <QIcon>
+#include <QRubberBand>
+#include <QMouseEvent>
+#include <QToolTip>
+#include <QChartView>
 #include <QtCharts/QChart>
 #include <QtCharts/QLineSeries>
 #include <QtCharts/QScatterSeries>
@@ -17,6 +25,7 @@
 SmilePlot::SmilePlot(QWidget* parent)
     : QChartView(new QChart(), parent)
 {
+    m_CurrentMode = SmilePlot::PlotMode::pmPan;
     m_chart = chart();
     setupChart();
     Log.msg(QString("Widget created using Qt Charts."), Logger::Level::DEBUG);
@@ -26,25 +35,58 @@ void SmilePlot::setupChart()
 {
     // --- This setup logic remains the same ---
     m_chart->setTitle("Implied Volatility Smile");
-    m_chart->legend()->setVisible(true); m_chart->legend()->setAlignment(Qt::AlignBottom);
-    m_theoSeries = new QLineSeries(m_chart); m_askSeries = new QScatterSeries(m_chart); m_bidSeries = new QScatterSeries(m_chart);
-    m_theoSeries->setName("Theo IVs"); m_theoSeries->setColor(Qt::darkGreen); m_theoSeries->setPen(QPen(Qt::darkGreen, 2));
-    m_askSeries->setName("Ask IV"); m_askSeries->setColor(Qt::blue); m_askSeries->setMarkerShape(QScatterSeries::MarkerShapeCircle); m_askSeries->setMarkerSize(7.0); m_askSeries->setBorderColor(Qt::transparent);
-    m_bidSeries->setName("Bid IV"); m_bidSeries->setColor(Qt::red); m_bidSeries->setMarkerShape(QScatterSeries::MarkerShapeRectangle); m_bidSeries->setMarkerSize(7.0); m_bidSeries->setBorderColor(Qt::transparent);
-    m_chart->addSeries(m_theoSeries); m_chart->addSeries(m_askSeries); m_chart->addSeries(m_bidSeries);
+    m_chart->legend()->setVisible(true); 
+    m_chart->legend()->setAlignment(Qt::AlignBottom);
+    m_theoSeries = new QLineSeries(m_chart); 
+    m_askSeries = new QScatterSeries(m_chart); 
+    m_bidSeries = new QScatterSeries(m_chart);
+    m_theoSeries->setName("Theo IVs"); 
+    m_theoSeries->setColor(Qt::darkGreen); 
+    m_theoSeries->setPen(QPen(Qt::darkGreen, 2));
+    m_askSeries->setName("Ask IV"); 
+    m_askSeries->setColor(Qt::blue); 
+    m_askSeries->setMarkerShape(QScatterSeries::MarkerShapeRectangle);
+    m_askSeries->setMarkerSize(7.0); 
+    m_askSeries->setBorderColor(Qt::transparent);
+    m_bidSeries->setName("Bid IV"); 
+    m_bidSeries->setColor(Qt::red); 
+    m_bidSeries->setMarkerShape(QScatterSeries::MarkerShapeCircle);
+    m_bidSeries->setMarkerSize(7.0); 
+    m_bidSeries->setBorderColor(Qt::transparent);
+    m_chart->addSeries(m_theoSeries); 
+    m_chart->addSeries(m_askSeries); 
+    m_chart->addSeries(m_bidSeries);
     m_chart->createDefaultAxes();
     m_axisX = qobject_cast<QValueAxis*>(m_chart->axes(Qt::Horizontal, m_theoSeries).first());
     m_axisY = qobject_cast<QValueAxis*>(m_chart->axes(Qt::Vertical, m_theoSeries).first());
     if (m_axisX && m_axisY) { // Axis configuration (same as before)
-        m_axisX->setTitleText("Strike"); m_axisY->setTitleText("Implied Volatility (IV)");
-        m_axisY->setLabelFormat("%.4f"); m_axisX->setLabelFormat("%.2f");
-        m_axisY->setMin(0); m_axisX->setTickCount(11); m_axisY->setTickCount(6);
-        m_axisX->setGridLineVisible(true); m_axisY->setGridLineVisible(true); m_axisX->setMinorGridLineVisible(true); m_axisY->setMinorGridLineVisible(true);
-        QPen gridPen(QColor(220, 220, 220), 1, Qt::DotLine); QPen minorGridPen(QColor(240, 240, 240), 1, Qt::DotLine);
-        m_axisX->setGridLinePen(gridPen); m_axisY->setGridLinePen(gridPen); m_axisX->setMinorGridLinePen(minorGridPen); m_axisY->setMinorGridLinePen(minorGridPen);
+        m_axisX->setTitleText("Strike"); 
+        m_axisY->setTitleText("Implied Volatility (IV)");
+        m_axisY->setLabelFormat("%.4f"); 
+        m_axisX->setLabelFormat("%.2f");
+        m_axisY->setMin(0); 
+        m_axisX->setTickCount(11); 
+        m_axisY->setTickCount(6);
+        m_axisX->setGridLineVisible(true); 
+        m_axisY->setGridLineVisible(true); 
+        m_axisX->setMinorGridLineVisible(true); 
+        m_axisY->setMinorGridLineVisible(true);
+        QPen gridPen(QColor(220, 220, 220), 1, Qt::DotLine); 
+        QPen minorGridPen(QColor(240, 240, 240), 1, Qt::DotLine);
+        m_axisX->setGridLinePen(gridPen); 
+        m_axisY->setGridLinePen(gridPen); 
+        m_axisX->setMinorGridLinePen(minorGridPen); 
+        m_axisY->setMinorGridLinePen(minorGridPen);
     }
-    else { /* Log Error */ }
-    setRubberBand(QChartView::RectangleRubberBand); setDragMode(QChartView::ScrollHandDrag); setRenderHint(QPainter::Antialiasing);
+
+    setRubberBand(QChartView::RectangleRubberBand); 
+    setDragMode(QChartView::ScrollHandDrag); 
+    setRenderHint(QPainter::Antialiasing);
+    setCursor(Qt::ArrowCursor);
+
+    // Install event filter on the chart view to capture mouse events
+    installEventFilter(this);
+
     connect(m_askSeries, &QScatterSeries::clicked, this, &SmilePlot::handleAskClick);
     connect(m_bidSeries, &QScatterSeries::clicked, this, &SmilePlot::handleBidClick);
 }
@@ -97,8 +139,8 @@ void SmilePlot::updatePlot(const QVector<double>& strikes,
             }
             else { m_axisX->setRange(0, 100); m_axisY->setRange(0, 1); }
         }
-        else { 
-            /* Log Warning */ 
+        else {
+            /* Log Warning */
         }
     }
     else { clearPlot(); }
@@ -115,7 +157,7 @@ void SmilePlot::clearPlot()
 void SmilePlot::resetZoom()
 {
     if (m_chart) {
-        m_chart->zoomReset(); 
+        m_chart->zoomReset();
         // Note: This resets zoom/pan applied via mouse interactions.
         // It does NOT necessarily rescale axes to fit data if the underlying
         // data hasn't changed. If you want to force a rescale AND reset zoom,
@@ -175,3 +217,78 @@ void SmilePlot::mapTooltips(const QList<QPointF>& points, const QStringList& too
         outTooltipMap.insert(points.at(i).toPoint(), tooltips.at(i)); // <<< Convert to QPoint key here
     }
 }
+
+QChartView* SmilePlot::chartView() {
+    return reinterpret_cast<QChartView*>(this);
+}
+
+// --- Event Filter for Panning/Zooming ---
+bool SmilePlot::eventFilter(QObject* watched, QEvent* event) {
+
+    if (watched == this) {
+        QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
+
+        switch (event->type()) {
+        case QEvent::MouseButtonPress:
+            if (m_CurrentMode == pmPan && mouseEvent->button() == Qt::LeftButton) {
+                m_panLastPos = mouseEvent->pos(); // Use pos() relative to chartview
+                m_isPanning = true;
+                this->setCursor(Qt::CrossCursor);
+                return true; // Event handled
+            }
+            // Zoom mode uses RubberBand selection, handled by QChartView itself
+            break;
+
+        case QEvent::MouseMove:
+            if (m_isPanning) { // Only pan if dragging started in pan mode
+                QPoint delta = mouseEvent->pos() - m_panLastPos;
+                this->scroll(-delta.x(), delta.y()); // Scroll chart axes
+                m_panLastPos = mouseEvent->pos(); // Update last position
+                return true; // Event handled
+            }
+            break;
+
+        case QEvent::MouseButtonRelease:
+            if (m_isPanning && mouseEvent->button() == Qt::LeftButton) {
+                m_isPanning = false;
+                this->setCursor(Qt::CrossCursor);
+                // Or back to arrow if preferred: m_chartView->setCursor(Qt::ArrowCursor);
+                return true; // Event handled
+            }
+            // --- Handle Zoom Completion ---
+            else if (m_CurrentMode == pmZoom && mouseEvent->button() == Qt::LeftButton) {
+                // QChartView handles the rubber band display.
+                // We need to get the selected rectangle and zoom the chart.
+                QRect zoomRect = this->rubberBandRect();
+                if (!zoomRect.isNull() && (zoomRect.width() > 5 || zoomRect.height() > 5)) { // Check for minimal size
+                    Log.msg(FNAME + "Zooming to rect: " + QString::number(zoomRect.x()) + "," + QString::number(zoomRect.y()) + " " + QString::number(zoomRect.width()) + "x" + QString::number(zoomRect.height()), Logger::Level::DEBUG);
+                    m_chart->zoomIn(zoomRect); // Zoom chart to the selected rectangle
+                }
+                else {
+                    // If rect is too small or invalid, maybe reset zoom?
+                    // m_chart->zoomReset();
+                    Log.msg(FNAME + "Zoom rectangle too small or invalid, zoom cancelled.", Logger::Level::DEBUG);
+                }
+                // Reset cursor after zoom attempt
+                this->setCursor(Qt::CrossCursor); // Keep cross for zoom mode
+                return true; // Event handled (even if zoom didn't happen)
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    // Pass unhandled events to the base class
+    return QWidget::eventFilter(watched, event);
+}
+
+SmilePlot::PlotMode SmilePlot::currentMode() const
+{
+    return m_CurrentMode;
+}
+
+void SmilePlot::setCurrentMode(SmilePlot::PlotMode mode)
+{
+    m_CurrentMode = mode;
+}
+

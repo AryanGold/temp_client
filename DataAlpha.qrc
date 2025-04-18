@@ -18,5 +18,7 @@
         <file>resources/icons/buttons/settings_item.png</file>
         <file>resources/icons/buttons/new_chart.png</file>
         <file>resources/icons/buttons/add_table.png</file>
+        <file>resources/icons/buttons/pan_icon.png</file>
+        <file>resources/icons/buttons/zoom.png</file>
     </qresource>
 </RCC>

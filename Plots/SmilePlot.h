@@ -4,6 +4,7 @@
 #include <QtCharts/qchartglobal.h>
 
 //QT_CHARTS_BEGIN_NAMESPACE
+class QChartView;
 class QChart;
 class QLineSeries;
 class QScatterSeries;
@@ -26,6 +27,20 @@ public:
 
     enum ScatterType { AskIV, BidIV };
     Q_ENUM(ScatterType)
+
+        // Enum for interaction modes
+    enum PlotMode {
+        pmPan, // Drag to move
+        pmZoom // Drag to zoom region
+    };
+    Q_ENUM(PlotMode)
+
+    QChartView* chartView();
+    PlotMode currentMode() const;
+    void setCurrentMode(PlotMode);
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 signals:
     // Signal still uses QPointF for precise data coordinates
@@ -60,5 +75,10 @@ private:
     // Helpers still work with QPointF internally for plotting
     QList<QPointF> createPoints(const QVector<double>& xData, const QVector<double>& yData);
     // Map tooltip helper needs adapting
-    void mapTooltips(const QList<QPointF>& points, const QStringList& tooltips, QHash<QPoint, QString>& outTooltipMap); // <<< Map type changed
+    void mapTooltips(const QList<QPointF>& points, const QStringList& tooltips, QHash<QPoint, QString>& outTooltipMap); 
+
+    PlotMode m_CurrentMode;
+    // Panning State
+    bool m_isPanning = false;
+    QPoint m_panLastPos;
 };

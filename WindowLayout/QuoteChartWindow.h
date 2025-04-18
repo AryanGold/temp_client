@@ -17,8 +17,8 @@ class QVBoxLayout;
 class QHBoxLayout;
 class QWidget;
 class ClientReceiver;
-class SmilePlot; // Include Qt Charts based SmilePlot class header
 class QLabel;     // Include QLabel
+class QButtonGroup;
 
 class QuoteChartWindow : public BaseWindow
 {
@@ -40,7 +40,7 @@ private slots:
     // Slot to handle clicks emitted from SmilePlot
     void onPlotPointClicked(SmilePlot::ScatterType type, double strike, double iv, QPointF screenPos);
     void onResetZoomClicked();
-
+    void onModeButtonClicked(int id);
 
 private:
     QWidget* m_centralWidget = nullptr;
@@ -50,7 +50,13 @@ private:
     QComboBox* m_dateCombo = nullptr;
     QPushButton* m_recalibrateButton = nullptr;
     SmilePlot* m_smilePlot = nullptr; // Instance of the Qt Charts based SmilePlot
+
     QPushButton* m_resetZoomButton = nullptr;
+
+    // Interaction Mode Handling
+    QToolButton* m_panButton = nullptr;
+    QToolButton* m_zoomButton = nullptr;
+    QButtonGroup* m_modeButtons = nullptr;
 
     ClientReceiver* m_clientReceiver = nullptr;
     QMap<QString, QList<QDate>> m_availableDates; // Cache available dates
@@ -59,4 +65,8 @@ private:
     void setupConnections();
     void populateSymbolComboBox(const QStringList& symbols);
     void populateDateComboBox(const QList<QDate>& dates);
+
+    void setupModeButtons(); // Create Pan/Zoom buttons
+    void applyCurrentInteractionMode();
+    void setMode(SmilePlot::PlotMode mode);
 };
