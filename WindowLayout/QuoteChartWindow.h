@@ -2,6 +2,7 @@
 
 #include "BaseWindow.h"
 #include "Plots/SmilePlot.h"
+#include "Plots/PlotDataForDate.h"
 
 #include <QMainWindow>
 #include <QMap>
@@ -32,7 +33,8 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private slots:
-    void onDataModelReady(const QStringList& availableSymbols, const QMap<QString, QList<QDate>>& availableDatesPerSymbol);
+    void onDataModelReady(const QStringList& availableSymbols,
+        const QMap<QString, QMap<QDate, PlotDataForDate>>& allData);
     void onSymbolChanged(int index);
     void onDateChanged(int index);
     void onRecalibrateClicked();
@@ -59,12 +61,21 @@ private:
     QButtonGroup* m_modeButtons = nullptr;
 
     ClientReceiver* m_clientReceiver = nullptr;
-    QMap<QString, QList<QDate>> m_availableDates; // Cache available dates
+
+    // --- Data Storage ---
+    // Stores ALL plot data received, keyed by symbol string, then by QDate
+    QMap<QString, QMap<QDate, PlotDataForDate>> m_allPlotData;
+    // Stores available dates for the *currently selected* symbol (used to populate date combo)
+    QList<QDate> m_availableDatesForCurrentSymbol;
+    // Stores the currently selected symbol and date from the UI
+    QString m_currentSymbol;
+    QDate m_currentDate;
 
     void setupUi();
     void setupConnections();
-    void populateSymbolComboBox(const QStringList& symbols);
-    void populateDateComboBox(const QList<QDate>& dates);
+    void populateSymbolCombo(const QStringList& symbols);
+    void populateDateCombo();
+    void plotSelectedData();  // Filters data and calls SmilePlot::updateData
 
     void setupModeButtons(); // Create Pan/Zoom buttons
     void applyCurrentInteractionMode();

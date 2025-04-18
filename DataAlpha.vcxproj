@@ -108,7 +108,8 @@
     <ClInclude Include="Glob\Logger.h" />
     <ClInclude Include="libs\Compressor.h" />
     <ClInclude Include="Plots\PlotDataForDate.h" />
-    <ClInclude Include="Plots\SmilePlotData.h" />
+    <ClInclude Include="Plots\SmilePointData.h" />
+    <ClInclude Include="Utils\Utils.h" />
     <QtMoc Include="Plots\SmilePlot.h" />
     <QtMoc Include="WindowLayout\LogWindow.h" />
     <QtMoc Include="Data\ClientReceiver.h" />

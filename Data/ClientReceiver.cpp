@@ -34,6 +34,157 @@ QList<QDate> ClientReceiver::getAvailableExpirationDates(const QString& symbol) 
     return dates;
 }
 
+// Helper function to safely get a field by index, returning empty string if out of bounds
+QString ClientReceiver::getFieldSafe(const QStringList& fields, int index) {
+    return (index >= 0 && index < fields.size()) ? fields[index].trimmed() : QString();
+}
+
+// Helper function to parse CSV data into PlotDataForDate struct using column names
+bool ClientReceiver::parseSmileCSV(const QString& csvData, QDate& outDate, PlotDataForDate& outPlotData) {
+    outPlotData.theoPoints.clear();
+    outPlotData.midPoints.clear();
+    outPlotData.bidPoints.clear();
+    outPlotData.askPoints.clear();
+    outPlotData.pointDetails.clear();
+    outDate = QDate(); // Reset date
+
+    QStringList lines = csvData.split('\n', Qt::SkipEmptyParts);
+    if (lines.size() < 2) { // Need header + data
+        Log.msg(FNAME + "CSV data has too few lines (< 2).", Logger::Level::WARNING);
+        return false;
+    }
+
+    // --- Parse Header Row ---
+    QStringList headerFields = lines[0].split(',');
+    QMap<QString, int> headerMap; // Map column name to index
+    for (int i = 0; i < headerFields.size(); ++i) {
+        // Trim whitespace and store (convert to lower for case-insensitivity if desired)
+        headerMap[headerFields[i].trimmed()] = i;
+        // Example case-insensitive: headerMap[headerFields[i].trimmed().toLower()] = i;
+    }
+    Log.msg(FNAME + "Parsed header with " + QString::number(headerMap.size()) + " columns.", Logger::Level::DEBUG);
+
+    // --- Define Required Columns and Get Indices ---
+    // Store required column names
+    const QList<QString> requiredColumns = {
+        "snap_shot_dates", "log_moneyness", "theo_ivs", "mid_iv", "bid_iv",
+        "ask_iv", "strikes", "symbol", "bid_prices", "ask_prices"
+        // Add any other columns you absolutely need
+    };
+
+    // Create a map to store the resolved indices for required columns
+    QMap<QString, int> colIndices;
+    for (const QString& colName : requiredColumns) {
+        if (!headerMap.contains(colName)) {
+            Log.msg(FNAME + "CSV header is missing required column: '" + colName + "'.", Logger::Level::ERROR);
+            return false; // Cannot proceed without required columns
+        }
+        colIndices[colName] = headerMap.value(colName);
+    }
+    // --- End Header Parsing and Index Mapping ---
+
+
+    bool dateParsed = false;
+    int lineNum = 0;
+
+    for (const QString& line : lines) {
+        lineNum++;
+        if (lineNum == 1) continue; // Skip header row
+
+        QString cleanLine = line.trimmed();
+        if (cleanLine.isEmpty()) continue;
+
+        QStringList fields = cleanLine.split(',');
+        // No strict check on field count needed now, just access by mapped index
+
+        bool ok; // For checking numeric conversions
+
+        // --- Parse Date (using mapped index) ---
+        if (!dateParsed) {
+            QString dateStr = getFieldSafe(fields, colIndices["snap_shot_dates"]);
+            outDate = QDate::fromString(dateStr, Qt::ISODate);
+            if (!outDate.isValid()) {
+                Log.msg(FNAME + "Failed to parse snapshot date from first data row: " + dateStr, Logger::Level::ERROR);
+                return false;
+            }
+            dateParsed = true;
+            Log.msg(FNAME + "Parsed snapshot date: " + outDate.toString(Qt::ISODate), Logger::Level::DEBUG);
+        }
+
+        // --- Parse Numeric Values (using mapped indices) ---
+        double logMny = getFieldSafe(fields, colIndices["log_moneyness"]).toDouble(&ok);
+        if (!ok) { Log.msg(FNAME + "Skipping line " + QString::number(lineNum) + 
+            ": Invalid log_moneyness value.", Logger::Level::WARNING); continue; }
+
+        double theoIv = getFieldSafe(fields, colIndices["theo_ivs"]).toDouble(&ok);
+        if (!ok) { Log.msg(FNAME + "Skipping line " + QString::number(lineNum) + 
+            ": Invalid theo_ivs value.", Logger::Level::WARNING); continue; }
+
+        double midIv = getFieldSafe(fields, colIndices["mid_iv"]).toDouble(&ok);
+        if (!ok) { Log.msg(FNAME + "Skipping line " + QString::number(lineNum) + 
+            ": Invalid mid_iv value.", Logger::Level::WARNING); continue; }
+
+        double bidIv = getFieldSafe(fields, colIndices["bid_iv"]).toDouble(&ok);
+        if (!ok) { Log.msg(FNAME + "Skipping line " + QString::number(lineNum) + 
+            ": Invalid bid_iv value.", Logger::Level::WARNING); continue; }
+
+        double askIv = getFieldSafe(fields, colIndices["ask_iv"]).toDouble(&ok);
+        if (!ok) { Log.msg(FNAME + "Skipping line " + QString::number(lineNum) + 
+            ": Invalid ask_iv value.", Logger::Level::WARNING); continue; }
+
+        double strike = getFieldSafe(fields, colIndices["strikes"]).toDouble(&ok);
+        if (!ok) { Log.msg(FNAME + "Skipping line " + QString::number(lineNum) + 
+            ": Invalid strikes value.", Logger::Level::WARNING); continue; }
+
+        double bidPrice = getFieldSafe(fields, colIndices["bid_prices"]).toDouble(&ok);
+        if (!ok) { Log.msg(FNAME + "Skipping line " + QString::number(lineNum) + 
+            ": Invalid bid_prices value.", Logger::Level::WARNING); continue; }
+
+        double askPrice = getFieldSafe(fields, colIndices["ask_prices"]).toDouble(&ok);
+        if (!ok) { Log.msg(FNAME + "Skipping line " + QString::number(lineNum) + 
+            ": Invalid ask_prices value.", Logger::Level::WARNING); continue; }
+
+        // Get option symbol string
+        QString optionSymbol = getFieldSafe(fields, colIndices["symbol"]);
+        if (optionSymbol.isEmpty()) { Log.msg(FNAME + "Skipping line " + QString::number(lineNum) + 
+            ": Missing option symbol.", Logger::Level::WARNING); continue; }
+        // --- End Parse Numeric Values ---
+
+
+        // Add points to vectors
+        outPlotData.theoPoints.append(QPointF(logMny, theoIv));
+        outPlotData.midPoints.append(QPointF(logMny, midIv));
+        outPlotData.bidPoints.append(QPointF(logMny, bidIv));
+        outPlotData.askPoints.append(QPointF(logMny, askIv));
+
+        // Create and add details struct
+        SmilePointData details;
+        details.symbol = optionSymbol;
+        details.strike = strike;
+        details.mid_iv = midIv;
+        details.theo_iv = theoIv;
+        details.bid_iv = bidIv;
+        details.ask_iv = askIv;
+        details.bid_price = bidPrice;
+        details.ask_price = askPrice;
+        // Add other details if parsed using their column names/indices
+        outPlotData.pointDetails.append(details);
+
+    } // End for loop
+
+    if (outPlotData.theoPoints.isEmpty() && outPlotData.midPoints.isEmpty()) {
+        Log.msg(FNAME + "No valid data points parsed from CSV.", Logger::Level::WARNING);
+        return false;
+    }
+    if (!dateParsed) {
+        Log.msg(FNAME + "No valid date found in CSV data.", Logger::Level::ERROR);
+        return false;
+    }
+
+    return true; // Success
+}
+
+
 void ClientReceiver::processWebSocketMessage(const QString& symbol, const QString& model, const QJsonObject& data) {
     Log.msg(FNAME + QString("Processing WebSocket message..."), Logger::Level::DEBUG);
 
@@ -93,6 +244,32 @@ void ClientReceiver::processWebSocketMessage(const QString& symbol, const QStrin
         return;
     }
 
+    // --- 2. Convert Decompressed Bytes to QString (UTF-8 CSV) ---
+    QString csvData = QString::fromUtf8(decompressedBytes);
+    if (csvData.isEmpty() && !decompressedBytes.isEmpty()) {
+        Log.msg(FNAME + "Failed to convert decompressed bytes to UTF-8 string.", Logger::Level::ERROR);
+        return;
+    }
+    // --- End Conversion ---
+
+    // --- 3. Parse the CSV Data ---
+    QDate snapshotDate;
+    PlotDataForDate plotData;
+
+    // Parse the CSV data from the decompressed string
+    if (parseSmileCSV(csvData, snapshotDate, plotData)) {
+        // If parsing succeeded, emit the new signal
+        Log.msg(FNAME + "CSV parsed successfully for date: " + snapshotDate.toString(Qt::ISODate)
+            + ". Emitting plotDataUpdated.", Logger::Level::DEBUG);
+        emit plotDataUpdated(symbol, snapshotDate, plotData);
+    }
+    else {
+        // Parsing failed, error logged within parseSmileCSV
+        Log.msg(FNAME + "Failed to parse CSV data after decompression for " + symbol, Logger::Level::ERROR);
+    }
+    // --- End Parsing ---
+
+    /*
     // Use a temporary map for parsing results
     QMap<QString, QMap<QDate, SmileData>> newlyParsedData;
     bool parseOk = parseAndLoadData(decompressedBytes, newlyParsedData);
@@ -132,8 +309,10 @@ void ClientReceiver::processWebSocketMessage(const QString& symbol, const QStrin
         Log.msg(FNAME + QString("Failed to parse or load decompressed data symbol[%1], model[%2].")
             .arg(symbol).arg(model), Logger::Level::ERROR);
     }
+    */
 }
 
+/*
 bool ClientReceiver::parseAndLoadData(const QByteArray& decompressedCsvData, QMap<QString, QMap<QDate, SmileData>>& outData) {
     outData.clear();
     QTextStream stream(decompressedCsvData);
@@ -245,3 +424,4 @@ bool ClientReceiver::parseAndLoadData(const QByteArray& decompressedCsvData, QMa
 
     return true; // Indicate successful parsing attempt
 }
+*/

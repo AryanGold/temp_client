@@ -34,7 +34,6 @@ SmilePlot::SmilePlot(QWidget* parent)
 
 void SmilePlot::setupChart()
 {
-    // --- This setup logic remains the same ---
     m_chart->setTitle("Implied Volatility Smile");
     m_chart->legend()->setVisible(true); 
     m_chart->legend()->setAlignment(Qt::AlignBottom);
@@ -87,33 +86,29 @@ void SmilePlot::setupChart()
 
     connect(m_askSeries, &QScatterSeries::clicked, this, &SmilePlot::handleAskClick);
     connect(m_bidSeries, &QScatterSeries::clicked, this, &SmilePlot::handleBidClick);
+
+    connect(m_askSeries, &QScatterSeries::hovered, this, &SmilePlot::handleAskHover);
+    connect(m_bidSeries, &QScatterSeries::hovered, this, &SmilePlot::handleBidHover);
 }
 
 //----------------------------------------------------------------------------
 // Public Slots (No changes to updatePlot signature, change happens inside)
 //----------------------------------------------------------------------------
-void SmilePlot::updatePlot(const QVector<double>& strikes,
-    const QVector<double>& theoIvs,
-    const QVector<double>& askIvs,
-    const QVector<double>& bidIvs,
-    const QStringList& tooltips)
+void SmilePlot::updateData(const QVector<QPointF>& strikes,
+    const QVector<QPointF>& theoPoints,
+    const QVector<QPointF>& askPoints,
+    const QVector<QPointF>& bidPoints,
+    const QVector<SmilePointData>& pointDetails)
 {
     Log.msg(FNAME + QString("Updating plot data. Points received: %1").arg(strikes.size()), Logger::Level::DEBUG);
 
-    // Data Validation (same as before)
-    if (strikes.size() != theoIvs.size() || strikes.size() != askIvs.size() ||
-        strikes.size() != bidIvs.size() || strikes.size() != tooltips.size())
-    { /* Log Error */ clearPlot(); return;
+    m_pointDetails = pointDetails;
+
+    // Basic size check (optional but recommended)
+    if (!theoPoints.isEmpty() && m_pointDetails.size() != theoPoints.size()) {
+        Log.msg(FNAME + "Warning: Point details size mismatch with Theo series size. Tooltips might be incorrect.", 
+            Logger::Level::WARNING);
     }
-
-    // Create QPointF lists for plotting (same as before)
-    QList<QPointF> theoPoints = createPoints(strikes, theoIvs);
-    QList<QPointF> askPoints = createPoints(strikes, askIvs);
-    QList<QPointF> bidPoints = createPoints(strikes, bidIvs);
-
-    // --- Map tooltips using QPoint keys ---
-    mapTooltips(askPoints, tooltips, m_askTooltips); // Pass the QMap<QPoint, QString>
-    mapTooltips(bidPoints, tooltips, m_bidTooltips); // Pass the QMap<QPoint, QString>
 
     // Update Series Data (same as before)
     m_theoSeries->replace(theoPoints);
@@ -184,6 +179,46 @@ void SmilePlot::handleBidClick(const QPointF& point) {
     QString tooltip = m_bidTooltips.value(keyPoint, QString("Strike: %1\nBid IV: %2").arg(point.x()).arg(point.y(), 0, 'f', 4));
     QToolTip::showText(QCursor::pos(), tooltip, this);
     emit pointClicked(BidIV, point.x(), point.y(), mapFromGlobal(QCursor::pos()));
+}
+
+void SmilePlot::handleAskHover(const QPointF& point, bool state) {
+    if (state) { // Mouse is hovering OVER the point (or within tolerance)
+        //int dataIndex = findDataIndexForPoint(point, m_theoSeries);
+        //if (dataIndex >= 0) {
+        //    const SmilePointData& pointData = mPointDetails[dataIndex];
+        //    QString tooltipText = pointData.formatForTooltip();
+        //    QPoint viewPos = m_chart->mapToPosition(point, m_theoSeries);
+        //    QPoint globalPos = this->mapToGlobal(viewPos); // Use 'this' (the ChartView)
+        //    QToolTip::showText(globalPos, tooltipText, this); // Use 'this'
+        //}
+        //else {
+        //    QToolTip::hideText(); // Hide if index invalid
+        //}
+        QToolTip::showText(QCursor::pos(), "GG Ask", this);
+    }
+    else { // Mouse left the point
+        QToolTip::hideText(); // Hide the tooltip
+    }
+}
+
+void SmilePlot::handleBidHover(const QPointF& point, bool state) {
+    if (state) { // Mouse is hovering OVER the point (or within tolerance)
+        //int dataIndex = findDataIndexForPoint(point, m_theoSeries);
+        //if (dataIndex >= 0) {
+        //    const SmilePointData& pointData = mPointDetails[dataIndex];
+        //    QString tooltipText = pointData.formatForTooltip();
+        //    QPoint viewPos = m_chart->mapToPosition(point, m_theoSeries);
+        //    QPoint globalPos = this->mapToGlobal(viewPos); // Use 'this' (the ChartView)
+        //    QToolTip::showText(globalPos, tooltipText, this); // Use 'this'
+        //}
+        //else {
+        //    QToolTip::hideText(); // Hide if index invalid
+        //}
+        QToolTip::showText(QCursor::pos(), "GG Bid", this);
+    }
+    else { // Mouse left the point
+        QToolTip::hideText(); // Hide the tooltip
+    }
 }
 
 //----------------------------------------------------------------------------

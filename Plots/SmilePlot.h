@@ -19,6 +19,8 @@ class QValueAxis;
 #include <QMouseEvent>
 #include <QWheelEvent>
 
+#include "SmilePointData.h"
+
 class SmilePlot : public QChartView
 {
     Q_OBJECT
@@ -52,17 +54,20 @@ signals:
     void pointClicked(SmilePlot::ScatterType type, double strike, double iv, QPointF screenPos);
 
 public slots:
-    void updatePlot(const QVector<double>& strikes,
-        const QVector<double>& theoIvs,
-        const QVector<double>& askIvs,
-        const QVector<double>& bidIvs,
-        const QStringList& tooltips);
+    void updateData(const QVector<QPointF>& strikes,
+        const QVector<QPointF>& theoIvs,
+        const QVector<QPointF>& askIvs,
+        const QVector<QPointF>& bidIvs,
+        const QVector<SmilePointData>& pointDetails);
     void clearPlot();
     void resetZoom();
 
 private slots:
-    void handleAskClick(const QPointF& point); // Slot receives precise QPointF
+    void handleAskClick(const QPointF& point);
     void handleBidClick(const QPointF& point);
+
+    void handleAskHover(const QPointF& point, bool state);
+    void handleBidHover(const QPointF& point, bool state);
 
 private:
     QChart* m_chart = nullptr;
@@ -81,9 +86,14 @@ private:
     QList<QPointF> createPoints(const QVector<double>& xData, const QVector<double>& yData);
     // Map tooltip helper needs adapting
     void mapTooltips(const QList<QPointF>& points, const QStringList& tooltips, QHash<QPoint, QString>& outTooltipMap); 
+    int findDataIndexForPoint(const QPointF& seriesPoint, QAbstractSeries* series) const;
 
     PlotMode m_CurrentMode;
     // Panning State
     bool m_isPanning = false;
     QPoint m_panLastPos;
+
+    // Stores details for the currently plotted points
+    QVector<SmilePointData> m_pointDetails;
+
 };

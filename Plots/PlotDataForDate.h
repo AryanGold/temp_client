@@ -2,12 +2,12 @@
 
 #include <QVector>
 #include <QPointF>
-#include "SmilePlotData.h"
+#include "SmilePointData.h"
 
 struct PlotDataForDate {
     QVector<QPointF> theoPoints;
     QVector<QPointF> midPoints;
     QVector<QPointF> bidPoints;
     QVector<QPointF> askPoints;
-    QVector<SmilePlotData> pointDetails; // Matching details for points
+    QVector<SmilePointData> pointDetails; // Matching details for points
 };

@@ -33,26 +33,6 @@ QuoteChartWindow::QuoteChartWindow(WindowManager* windowManager, ClientReceiver*
     setupConnections();
 
     applyCurrentInteractionMode();
-
-    // Trigger initial population using current data from receiver (if any)
-    if (m_clientReceiver) {
-        QStringList initialSymbols = m_clientReceiver->getAvailableSymbols();
-        QMap<QString, QList<QDate>> initialDates;
-        for (const QString& sym : initialSymbols) {
-            initialDates[sym] = m_clientReceiver->getAvailableExpirationDates(sym);
-        }
-        // Manually call the slot to populate UI based on initial receiver state
-        onDataModelReady(initialSymbols, initialDates);
-    }
-    else {
-        // Handle case where receiver is null on startup
-        m_symbolCombo->clear();
-        m_dateCombo->clear();
-        m_symbolCombo->addItem("Error: No Data Receiver");
-        m_dateCombo->addItem("Error: No Data Receiver");
-        m_symbolCombo->setEnabled(false);
-        m_dateCombo->setEnabled(false);
-    }
 }
 
 void QuoteChartWindow::setupUi() {
@@ -116,7 +96,7 @@ void QuoteChartWindow::setupConnections() {
 
     // Connect receiver's signal to update UI controls
     if (m_clientReceiver) {
-        connect(m_clientReceiver, &ClientReceiver::dataReady, this, &QuoteChartWindow::onDataModelReady);
+        connect(m_clientReceiver, &ClientReceiver::plotDataUpdated, this, &QuoteChartWindow::onDataModelReady);
     }
     else {
         Log.msg(FNAME + QString("Cannot connect model signals: ClientReceiver is null."), Logger::Level::WARNING);
@@ -126,72 +106,141 @@ void QuoteChartWindow::setupConnections() {
     connect(m_smilePlot, &SmilePlot::pointClicked, this, &QuoteChartWindow::onPlotPointClicked);
 }
 
-void QuoteChartWindow::populateSymbolComboBox(const QStringList& symbols) {
-    Log.msg(FNAME + QString("Populating symbol combo box with %1 items.").arg(symbols.size()), Logger::Level::DEBUG);
-    QString currentSymbol = m_symbolCombo->currentText(); // Remember current selection
+// Updates the items in the symbol combo box
+void QuoteChartWindow::populateSymbolCombo(const QStringList& symbols) {
+    if (!m_symbolCombo) return;
 
-    m_symbolCombo->blockSignals(true);
+    Log.msg(FNAME + "Populating symbol combo.", Logger::Level::DEBUG);
+    // Store the currently selected text to try and preserve it
+    QString currentSelection = m_symbolCombo->currentText();
+
+    m_symbolCombo->blockSignals(true); // Prevent signals during modification
     m_symbolCombo->clear();
-    if (symbols.isEmpty()) {
-        m_symbolCombo->addItem("No symbols available");
-        m_symbolCombo->setEnabled(false);
-    }
-    else {
-        m_symbolCombo->addItems(symbols);
-        // Try to restore previous selection
-        int prevIndex = m_symbolCombo->findText(currentSymbol);
-        if (prevIndex != -1) {
-            m_symbolCombo->setCurrentIndex(prevIndex);
-        }
-        m_symbolCombo->setEnabled(true);
-    }
-    m_symbolCombo->blockSignals(false);
+    m_symbolCombo->addItems(symbols);
 
-    // Manually trigger update for current/restored symbol if valid
-    if (m_symbolCombo->currentIndex() >= 0) {
-        onSymbolChanged(m_symbolCombo->currentIndex());
+    // Try to restore the previous selection
+    int idx = m_symbolCombo->findText(currentSelection);
+    if (idx != -1) {
+        m_symbolCombo->setCurrentIndex(idx);
+        // Update m_currentSymbol just in case itemText differs slightly
+        m_currentSymbol = m_symbolCombo->itemText(idx);
+    }
+    else if (m_symbolCombo->count() > 0) {
+        // If previous selection not found, select the first item
+        m_symbolCombo->setCurrentIndex(0);
+        m_currentSymbol = m_symbolCombo->itemText(0); // Update current symbol
     }
     else {
-        populateDateComboBox({}); // Clear dates if no symbol selected
+        // No symbols available
+        m_currentSymbol = "";
     }
+    m_symbolCombo->blockSignals(false); // Re-enable signals
+
+    // If the selection logic resulted in no current symbol, handle it
+    if (m_currentSymbol.isEmpty()) {
+        populateDateCombo(); // This will clear the date combo and plot
+    }
+    // If the selection logic *did* change the index (e.g. from -1 to 0, or restored index),
+    // the currentIndexChanged signal *should* fire now that signals are unblocked,
+    // triggering onSymbolChanged -> populateDateCombo -> plotSelectedData.
+    // If the index *didn't* change, we rely on the check in onDataModelReady to replot.
 }
 
-void QuoteChartWindow::populateDateComboBox(const QList<QDate>& dates) {
-    Log.msg(FNAME + QString("Populating date combo box with %1 dates.").arg(dates.size()), Logger::Level::DEBUG);
-    QVariant currentDateData = m_dateCombo->currentData(); // Remember current date
+// Updates the items in the date combo box based on the selected symbol
+void QuoteChartWindow::populateDateCombo() {
+    if (!m_dateCombo) return;
 
+    // Clear previous dates and disable combo initially
     m_dateCombo->blockSignals(true);
     m_dateCombo->clear();
-    if (dates.isEmpty()) {
-        m_dateCombo->addItem("No dates available");
-        m_dateCombo->setEnabled(false);
-    }
-    else {
-        int newIndex = -1;
-        for (int i = 0; i < dates.size(); ++i) {
-            const QDate& date = dates.at(i);
-            m_dateCombo->addItem(date.toString(Qt::ISODate), QVariant::fromValue(date));
-            // Check if this is the previously selected date
-            if (currentDateData.isValid() && currentDateData.canConvert<QDate>() && date == currentDateData.toDate()) {
-                newIndex = i;
-            }
-        }
-        // Restore previous selection if found, otherwise select first date
-        m_dateCombo->setCurrentIndex((newIndex != -1) ? newIndex : 0);
-        m_dateCombo->setEnabled(true);
-    }
-    m_dateCombo->blockSignals(false);
+    m_availableDatesForCurrentSymbol.clear();
+    m_dateCombo->setEnabled(false);
 
-    // Manually trigger plot update if a valid date is now selected
-    if (m_dateCombo->currentIndex() >= 0) {
-        requestPlotUpdate();
+    // Check if a valid symbol is selected and data exists for it
+    if (m_currentSymbol.isEmpty() || !m_allPlotData.contains(m_currentSymbol)) {
+        Log.msg(FNAME + "Cannot populate dates - no symbol selected or no data for symbol: " + m_currentSymbol, Logger::Level::DEBUG);
+        m_dateCombo->blockSignals(false);
+        plotSelectedData(); // Clear the plot
+        return;
+    }
+
+    Log.msg(FNAME + "Populating date combo for symbol: " + m_currentSymbol, Logger::Level::DEBUG);
+
+    // Get available dates and sort them
+    m_availableDatesForCurrentSymbol = m_allPlotData.value(m_currentSymbol).keys();
+    std::sort(m_availableDatesForCurrentSymbol.begin(), m_availableDatesForCurrentSymbol.end()); // Ascending sort
+
+    // Convert dates to strings for the combo box
+    QStringList dateStrings;
+    for (const QDate& date : std::as_const(m_availableDatesForCurrentSymbol)) {
+        dateStrings.append(date.toString(Qt::ISODate)); // Use YYYY-MM-DD format
+    }
+
+    // Store current selection string (if any) to try and preserve it
+    QString currentDateStringSelection = m_currentDate.isValid() ? m_currentDate.toString(Qt::ISODate) : "";
+
+    // Populate the combo box
+    m_dateCombo->addItems(dateStrings);
+    m_dateCombo->setEnabled(m_dateCombo->count() > 0); // Enable only if dates were added
+
+    // Try to restore previous selection or select the latest date
+    int idx = m_dateCombo->findText(currentDateStringSelection);
+    if (idx != -1) {
+        m_dateCombo->setCurrentIndex(idx);
+        // m_currentDate should already be correct
+    }
+    else if (m_dateCombo->count() > 0) {
+        // Default to the last (latest) date in the sorted list
+        m_dateCombo->setCurrentIndex(m_dateCombo->count() - 1);
+        // Update m_currentDate based on the new selection
+        m_currentDate = QDate::fromString(m_dateCombo->itemText(m_dateCombo->count() - 1), Qt::ISODate);
     }
     else {
-        m_smilePlot->clearPlot(); // Clear plot if no date selected
+        // No dates available for this symbol
+        m_currentDate = QDate(); // Set to invalid date
     }
+    m_dateCombo->blockSignals(false); // Re-enable signals
+
+    // Plot data for the automatically selected date (or clear plot if no date)
+    plotSelectedData();
 }
 
-void QuoteChartWindow::requestPlotUpdate() {
+// Retrieves data for the current symbol/date and sends it to SmilePlot
+void QuoteChartWindow::plotSelectedData() {
+    if (!m_smilePlot) {
+        Log.msg(FNAME + "SmilePlot widget is null, cannot plot.", Logger::Level::ERROR);
+        return;
+    }
+    if (m_currentSymbol.isEmpty() || !m_currentDate.isValid()) {
+        Log.msg(FNAME + "Cannot plot - Symbol or Date not selected/valid.", Logger::Level::DEBUG);
+        m_smilePlot->updateData({}, {}, {}, {}, {}); // Clear the plot
+        return;
+    }
+
+    Log.msg(FNAME + "Plotting data for: " + m_currentSymbol + " / " + m_currentDate.toString(Qt::ISODate), Logger::Level::DEBUG);
+
+    // Safely access the data using .value() which returns a default-constructed map if key not found
+    const auto& datesMap = m_allPlotData.value(m_currentSymbol);
+    // Safely access the specific date data using .value() which returns a default-constructed PlotDataForDate
+    const PlotDataForDate& dataToPlot = datesMap.value(m_currentDate);
+
+    // Check if the retrieved data is actually populated (value() returns default if key not found)
+    // A simple check could be if one of the vectors is empty, assuming valid data always has points.
+    if (dataToPlot.theoPoints.isEmpty() && dataToPlot.midPoints.isEmpty()) { // Adjust check as needed
+        Log.msg(FNAME + "No actual plot data found in map for selected symbol/date.", Logger::Level::WARNING);
+        m_smilePlot->updateData({}, {}, {}, {}, {}); // Clear the plot
+        return;
+    }
+
+    // Pass the retrieved data vectors to the SmilePlot widget
+    m_smilePlot->updateData(dataToPlot.theoPoints,
+        dataToPlot.midPoints,
+        dataToPlot.bidPoints,
+        dataToPlot.askPoints,
+        dataToPlot.pointDetails);
+}
+
+/*void QuoteChartWindow::requestPlotUpdate() {
     Log.msg(FNAME + QString("Plot update requested."), Logger::Level::DEBUG);
     if (!m_clientReceiver) {
         Log.msg(FNAME + QString("Cannot update plot: ClientReceiver is null."), Logger::Level::WARNING);
@@ -223,33 +272,67 @@ void QuoteChartWindow::requestPlotUpdate() {
     if (data.isValid) {
         Log.msg(FNAME + QString("Data retrieved (%1 points). Updating plot widget.")
             .arg(data.strikes.size()), Logger::Level::DEBUG);
-        m_smilePlot->updatePlot(data.strikes, data.theoIvs, data.askIvs, data.bidIvs, data.tooltips);
+        m_smilePlot->updateData(data.strikes, data.theoIvs, data.askIvs, data.bidIvs, data.tooltips);
     }
     else {
         Log.msg(FNAME + QString("No valid data found for selection in receiver. Clearing plot."), Logger::Level::WARNING);
         m_smilePlot->clearPlot();
     }
+}*/
+
+// Slot called when the complete data model is ready/updated
+void QuoteChartWindow::onDataModelReady(const QStringList& availableSymbols,
+    const QMap<QString, QMap<QDate, PlotDataForDate>>& allData)
+{
+    Log.msg(FNAME + "Received new data model. Symbols count: " + QString::number(availableSymbols.size()), Logger::Level::INFO);
+
+    // Store the complete dataset
+    m_allPlotData = allData;
+
+    // Update the list of symbols in the combo box
+    populateSymbolCombo(availableSymbols);
+
+    // If the currently selected symbol remained the same after repopulating the combo,
+    // but the underlying data might have changed, we need to trigger a replot manually.
+    if (m_symbolCombo && m_symbolCombo->currentText() == m_currentSymbol && !m_currentSymbol.isEmpty()) {
+        Log.msg(FNAME + "Symbol selection unchanged (" + m_currentSymbol + "), triggering plot update.", Logger::Level::DEBUG);
+        // Need to ensure date combo is also up-to-date before plotting
+        populateDateCombo(); // This will call plotSelectedData if a valid date exists/is selected
+    }
+    else if (availableSymbols.isEmpty()) {
+        // Handle case where no symbols are available after update
+        m_dateCombo->clear();
+        m_dateCombo->setEnabled(false);
+        if (m_smilePlot) m_smilePlot->updateData({}, {}, {}, {}, {}); // Clear plot
+    }
+    // Note: If populateSymbolCombo *changes* the current symbol, the onSymbolChanged slot
+    // will automatically trigger populateDateCombo and plotSelectedData.
 }
 
-void QuoteChartWindow::onDataModelReady(const QStringList& availableSymbols, const QMap<QString, QList<QDate>>& availableDatesPerSymbol) {
-    Log.msg(FNAME + QString("Received dataReady signal. Symbols: %1").arg(availableSymbols.join(", ")), Logger::Level::DEBUG);
-    m_availableDates = availableDatesPerSymbol; // Update cache
-    populateSymbolComboBox(availableSymbols);   // Repopulate symbols (will trigger date update)
-}
+// --- Slot Implementations for UI changes ---
 
 void QuoteChartWindow::onSymbolChanged(int index) {
-    if (index < 0) return;
-    QString selectedSymbol = m_symbolCombo->itemText(index);
-    Log.msg(FNAME + QString("Symbol changed to: '%1'. Updating date combo.").arg(selectedSymbol), Logger::Level::DEBUG);
-    // Get available dates for the newly selected symbol from cache
-    QList<QDate> dates = m_availableDates.value(selectedSymbol);
-    populateDateComboBox(dates); // Repopulate dates (will trigger plot update)
+    // This slot is triggered when the user selects a different symbol
+    if (!m_symbolCombo || index < 0) return; // Basic safety check
+    m_currentSymbol = m_symbolCombo->itemText(index); // Update the stored symbol
+    Log.msg(FNAME + "Symbol changed via UI to: " + m_currentSymbol, Logger::Level::DEBUG);
+    // Need to update the available dates and potentially the plot
+    populateDateCombo(); // This will find dates for the new symbol and trigger plotting
 }
 
 void QuoteChartWindow::onDateChanged(int index) {
-    if (index < 0) return;
-    Log.msg(FNAME + QString("Date changed. Triggering plot update."), Logger::Level::DEBUG);
-    requestPlotUpdate(); // Directly update plot for the new date
+    // This slot is triggered when the user selects a different date
+    if (!m_dateCombo || index < 0) return; // Basic safety check
+    // Update the stored date
+    m_currentDate = QDate::fromString(m_dateCombo->itemText(index), Qt::ISODate);
+    Log.msg(FNAME + "Date changed via UI to: " + m_currentDate.toString(Qt::ISODate), Logger::Level::DEBUG);
+    if (m_currentDate.isValid()) {
+        plotSelectedData(); // Re-plot with the newly selected date
+    }
+    else {
+        Log.msg(FNAME + "Invalid date selected via UI.", Logger::Level::WARNING);
+        if (m_smilePlot) m_smilePlot->updateData({}, {}, {}, {}, {}); // Clear plot
+    }
 }
 
 void QuoteChartWindow::onRecalibrateClicked() {
@@ -266,19 +349,19 @@ void QuoteChartWindow::onRecalibrateClicked() {
     // e.g., m_webSocketClient->sendCommand({"action": "force_recalibrate", "symbol": currentSymbol, "date": dateStr });
 }
 
-// --- Slot for Handling Plot Clicks ---
-void QuoteChartWindow::onPlotPointClicked(SmilePlot::ScatterType type, double strike, double iv, QPointF screenPos) {
-    QString typeStr = (type == SmilePlot::AskIV) ? "Ask" : "Bid";
-    Log.msg(FNAME + QString("Received plot click signal. Type: %1, Strike: %2, IV: %3")
-        .arg(typeStr).arg(strike).arg(iv), Logger::Level::INFO);
-
-    // Display info in the status bar
-    statusBar()->showMessage(QString("Clicked %1 Point - Strike: %L1, IV: %L2")
-        .arg(typeStr)
-        .arg(strike, 0, 'f', 2) // Format strike
-        .arg(iv, 0, 'f', 4), // Format IV
-        5000); // Show message for 5 seconds
-}
+//// --- Slot for Handling Plot Clicks ---
+//void QuoteChartWindow::onPlotPointClicked(SmilePlot::ScatterType type, double strike, double iv, QPointF screenPos) {
+//    QString typeStr = (type == SmilePlot::AskIV) ? "Ask" : "Bid";
+//    Log.msg(FNAME + QString("Received plot click signal. Type: %1, Strike: %2, IV: %3")
+//        .arg(typeStr).arg(strike).arg(iv), Logger::Level::INFO);
+//
+//    // Display info in the status bar
+//    statusBar()->showMessage(QString("Clicked %1 Point - Strike: %L1, IV: %L2")
+//        .arg(typeStr)
+//        .arg(strike, 0, 'f', 2) // Format strike
+//        .arg(iv, 0, 'f', 4), // Format IV
+//        5000); // Show message for 5 seconds
+//}
 
 void QuoteChartWindow::closeEvent(QCloseEvent* event) {
     Log.msg(FNAME + QString("Close event received."), Logger::Level::INFO);

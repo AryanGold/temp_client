@@ -9,6 +9,8 @@
 #include <QJsonObject>
 #include <QMutex> // For thread safety
 
+#include "Plots/PlotDataForDate.h"
+
 // Forward declaration
 class QJsonObject;
 
@@ -42,7 +44,7 @@ public:
 
 signals:
     // Emitted when new data has been processed and is ready
-    void dataReady(const QStringList& availableSymbols, const QMap<QString, QList<QDate>>& availableDatesPerSymbol);
+    void plotDataUpdated(const QString& symbol, const QDate& date, const PlotDataForDate& data);
 
 public slots:
     // Slot to receive the incoming JSON message containing compressed data
@@ -54,5 +56,8 @@ private:
     mutable QMutex m_dataMutex; // Protect access across threads
 
     // Helper function to parse CSV and populate internal storage
-    bool parseAndLoadData(const QByteArray& decompressedCsvData, QMap<QString, QMap<QDate, SmileData>>& outData);
+    //bool parseAndLoadData(const QByteArray& decompressedCsvData, QMap<QString, QMap<QDate, SmileData>>& outData);
+
+    static QString getFieldSafe(const QStringList& fields, int index);
+    bool parseSmileCSV(const QString& csvData, QDate& outDate, PlotDataForDate& outPlotData);
 };
