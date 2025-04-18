@@ -16,6 +16,8 @@ class QValueAxis;
 #include <QHash>
 #include <QPoint>
 #include <QPointF> // Needed for QMap key
+#include <QMouseEvent>
+#include <QWheelEvent>
 
 class SmilePlot : public QChartView
 {
@@ -40,7 +42,10 @@ public:
     void setCurrentMode(PlotMode);
 
 protected:
-    bool eventFilter(QObject* watched, QEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
 
 signals:
     // Signal still uses QPointF for precise data coordinates

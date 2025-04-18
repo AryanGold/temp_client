@@ -32,6 +32,8 @@ QuoteChartWindow::QuoteChartWindow(WindowManager* windowManager, ClientReceiver*
     setupUi();
     setupConnections();
 
+    applyCurrentInteractionMode();
+
     // Trigger initial population using current data from receiver (if any)
     if (m_clientReceiver) {
         QStringList initialSymbols = m_clientReceiver->getAvailableSymbols();
@@ -327,6 +329,8 @@ void QuoteChartWindow::setupModeButtons() {
 
     m_panButton->show();
     m_zoomButton->show();
+
+    m_panButton->setChecked(true); // by default
 }
 
 void QuoteChartWindow::setMode(SmilePlot::PlotMode mode) {
@@ -347,7 +351,7 @@ void QuoteChartWindow::setMode(SmilePlot::PlotMode mode) {
 
 void QuoteChartWindow::applyCurrentInteractionMode() {
     if (m_smilePlot->currentMode() == SmilePlot::PlotMode::pmPan) {
-        m_smilePlot->chartView()->setDragMode(QGraphicsView::ScrollHandDrag); // cursor for panning
+        m_smilePlot->chartView()->setDragMode(QGraphicsView::NoDrag);
         m_smilePlot->chartView()->setRubberBand(QChartView::NoRubberBand); // Disable rubber band
     }
     else { // pmZoom

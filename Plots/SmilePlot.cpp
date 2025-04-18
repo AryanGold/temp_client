@@ -13,6 +13,7 @@
 #include <QtCharts/QLineSeries>
 #include <QtCharts/QScatterSeries>
 #include <QtCharts/QValueAxis>
+#include <QApplication>
 #include <QToolTip>
 #include <QDebug>
 #include <limits>
@@ -83,9 +84,6 @@ void SmilePlot::setupChart()
     setDragMode(QChartView::ScrollHandDrag); 
     setRenderHint(QPainter::Antialiasing);
     setCursor(Qt::ArrowCursor);
-
-    // Install event filter on the chart view to capture mouse events
-    installEventFilter(this);
 
     connect(m_askSeries, &QScatterSeries::clicked, this, &SmilePlot::handleAskClick);
     connect(m_bidSeries, &QScatterSeries::clicked, this, &SmilePlot::handleBidClick);
@@ -222,65 +220,6 @@ QChartView* SmilePlot::chartView() {
     return reinterpret_cast<QChartView*>(this);
 }
 
-// --- Event Filter for Panning/Zooming ---
-bool SmilePlot::eventFilter(QObject* watched, QEvent* event) {
-
-    if (watched == this) {
-        QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
-
-        switch (event->type()) {
-        case QEvent::MouseButtonPress:
-            if (m_CurrentMode == pmPan && mouseEvent->button() == Qt::LeftButton) {
-                m_panLastPos = mouseEvent->pos(); // Use pos() relative to chartview
-                m_isPanning = true;
-                this->setCursor(Qt::CrossCursor);
-                return true; // Event handled
-            }
-            // Zoom mode uses RubberBand selection, handled by QChartView itself
-            break;
-
-        case QEvent::MouseMove:
-            if (m_isPanning) { // Only pan if dragging started in pan mode
-                QPoint delta = mouseEvent->pos() - m_panLastPos;
-                this->scroll(-delta.x(), delta.y()); // Scroll chart axes
-                m_panLastPos = mouseEvent->pos(); // Update last position
-                return true; // Event handled
-            }
-            break;
-
-        case QEvent::MouseButtonRelease:
-            if (m_isPanning && mouseEvent->button() == Qt::LeftButton) {
-                m_isPanning = false;
-                this->setCursor(Qt::CrossCursor);
-                // Or back to arrow if preferred: m_chartView->setCursor(Qt::ArrowCursor);
-                return true; // Event handled
-            }
-            // --- Handle Zoom Completion ---
-            else if (m_CurrentMode == pmZoom && mouseEvent->button() == Qt::LeftButton) {
-                // QChartView handles the rubber band display.
-                // We need to get the selected rectangle and zoom the chart.
-                QRect zoomRect = this->rubberBandRect();
-                if (!zoomRect.isNull() && (zoomRect.width() > 5 || zoomRect.height() > 5)) { // Check for minimal size
-                    Log.msg(FNAME + "Zooming to rect: " + QString::number(zoomRect.x()) + "," + QString::number(zoomRect.y()) + " " + QString::number(zoomRect.width()) + "x" + QString::number(zoomRect.height()), Logger::Level::DEBUG);
-                    m_chart->zoomIn(zoomRect); // Zoom chart to the selected rectangle
-                }
-                else {
-                    // If rect is too small or invalid, maybe reset zoom?
-                    // m_chart->zoomReset();
-                    Log.msg(FNAME + "Zoom rectangle too small or invalid, zoom cancelled.", Logger::Level::DEBUG);
-                }
-                // Reset cursor after zoom attempt
-                this->setCursor(Qt::CrossCursor); // Keep cross for zoom mode
-                return true; // Event handled (even if zoom didn't happen)
-            }
-            break;
-        default:
-            break;
-        }
-    }
-    // Pass unhandled events to the base class
-    return QWidget::eventFilter(watched, event);
-}
 
 SmilePlot::PlotMode SmilePlot::currentMode() const
 {
@@ -292,3 +231,86 @@ void SmilePlot::setCurrentMode(SmilePlot::PlotMode mode)
     m_CurrentMode = mode;
 }
 
+// --- Reimplemented Mouse Event Handlers ---
+
+void SmilePlot::mousePressEvent(QMouseEvent* event) {
+    if (m_CurrentMode == pmPan && event->button() == Qt::LeftButton) {
+        m_panLastPos = event->pos(); // Record position relative to this widget
+        m_isPanning = true;
+        this->setCursor(Qt::CrossCursor);
+        event->accept(); // Indicate we handled this
+    }
+    else if (m_CurrentMode == pmZoom) {
+        // Let QChartView handle the start of rubber band selection
+        QChartView::mousePressEvent(event);
+    }
+    else {
+        // Pass event to base class if not panning/zooming
+        QChartView::mousePressEvent(event);
+    }
+}
+
+void SmilePlot::mouseMoveEvent(QMouseEvent* event) {
+    if (m_isPanning) { // Check if we are in a panning drag
+        // Calculate delta and scroll the chart's axes
+        QPoint delta = event->pos() - m_panLastPos;
+        m_chart->scroll(-delta.x(), delta.y());
+        m_panLastPos = event->pos(); // Update position for next move
+        event->accept(); // Indicate we handled this
+    }
+    else if (m_CurrentMode == pmZoom) {
+        // Let QChartView handle drawing the rubber band
+        QChartView::mouseMoveEvent(event);
+    }
+    else {
+        QChartView::mouseMoveEvent(event);
+    }
+}
+
+void SmilePlot::mouseReleaseEvent(QMouseEvent* event) {
+    if (m_isPanning && event->button() == Qt::LeftButton) {
+        m_isPanning = false;
+        this->setCursor(Qt::CrossCursor); // Reset cursor for pan mode
+        event->accept(); // Indicate we handled this
+    }
+    else if (m_CurrentMode == pmZoom && event->button() == Qt::LeftButton) {
+        // Zoom logic is handled by QChartView's rubber band selection
+        // The base class implementation likely handles the zoomIn call
+        // based on the rubberBandRect when the button is released.
+        QChartView::mouseReleaseEvent(event); // IMPORTANT: Call base class for zoom!
+        // Reset cursor after zoom attempt
+        this->setCursor(Qt::CrossCursor);
+    }
+    else {
+        QChartView::mouseReleaseEvent(event);
+    }
+}
+
+void SmilePlot::wheelEvent(QWheelEvent* event) {
+    // Get the angle delta to determine direction and magnitude
+    // Positive delta usually means scrolling UP (zoom in), negative means DOWN (zoom out)
+    const qreal delta = event->angleDelta().y(); // Use vertical delta
+
+    if (qFuzzyIsNull(delta)) { // Check if delta is effectively zero
+        event->accept(); // Accept the event but do nothing
+        return;
+    }
+
+    // Define zoom factor (adjust sensitivity as needed)
+    const qreal factor = 1.15; // Zoom factor > 1 for zooming in
+
+    if (delta > 0) {
+        // Zoom In
+        Log.msg(FNAME + "Wheel Zoom In", Logger::Level::DEBUG);
+        m_chart->zoom(factor); // Zoom the chart by the factor (centered)
+    }
+    else {
+        // Zoom Out
+        Log.msg(FNAME + "Wheel Zoom Out", Logger::Level::DEBUG);
+        m_chart->zoom(1.0 / factor); // Zoom out by the inverse factor
+    }
+
+    event->accept(); // Indicate we handled the wheel event
+}
+
+// --- End Mouse Event Handlers ---
