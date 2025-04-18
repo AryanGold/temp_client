@@ -18,6 +18,7 @@ class QValueAxis;
 #include <QPointF> // Needed for QMap key
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QPointer>
 
 #include "SmilePointData.h"
 
@@ -47,11 +48,11 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void leaveEvent(QEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
 
 signals:
-    // Signal still uses QPointF for precise data coordinates
-    void pointClicked(SmilePlot::ScatterType type, double strike, double iv, QPointF screenPos);
+    void pointClicked(const SmilePointData& pointData);
 
 public slots:
     void updateData(const QVector<QPointF>& strikes,
@@ -63,8 +64,8 @@ public slots:
     void resetZoom();
 
 private slots:
-    void handleAskClick(const QPointF& point);
-    void handleBidClick(const QPointF& point);
+    //void handleAskClick(const QPointF& point);
+    //void handleBidClick(const QPointF& point);
 
     void handleAskHover(const QPointF& point, bool state);
     void handleBidHover(const QPointF& point, bool state);
@@ -77,16 +78,7 @@ private:
     QValueAxis* m_axisX = nullptr;
     QValueAxis* m_axisY = nullptr;
 
-    // --- Store tooltips mapped to INTEGER point coordinates ---
-    QHash<QPoint, QString> m_askTooltips; // <<< Key is now QPoint
-    QHash<QPoint, QString> m_bidTooltips; // <<< Key is now QPoint
-
     void setupChart();
-    // Helpers still work with QPointF internally for plotting
-    QList<QPointF> createPoints(const QVector<double>& xData, const QVector<double>& yData);
-    // Map tooltip helper needs adapting
-    void mapTooltips(const QList<QPointF>& points, const QStringList& tooltips, QHash<QPoint, QString>& outTooltipMap); 
-    int findDataIndexForPoint(const QPointF& seriesPoint, QAbstractSeries* series) const;
 
     PlotMode m_CurrentMode;
     // Panning State
@@ -96,4 +88,12 @@ private:
     // Stores details for the currently plotted points
     QVector<SmilePointData> m_pointDetails;
 
+    // --- Hover/Click State ---
+    QPointer<QAbstractSeries> m_hoveredSeries = nullptr; // Store pointer to hovered series
+    int mHoveredDataIndex = -1; // Store index of the point within mPointDetails
+    // --- End Hover/Click State ---
+
+    int findDataIndexForPoint(const QPointF& seriesPoint, QAbstractSeries* series) const;
+    // Helper to show tooltip (can be called by hover handlers)
+    void showPointTooltip(int dataIndex, const QPoint& globalPos);
 };

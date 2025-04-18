@@ -33,16 +33,13 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private slots:
-    void onDataModelReady(const QStringList& availableSymbols,
-        const QMap<QString, QMap<QDate, PlotDataForDate>>& allData);
+    void plotDataUpdated(const QString& symbol, const QDate& date, const PlotDataForDate& data);
     void onSymbolChanged(int index);
     void onDateChanged(int index);
     void onRecalibrateClicked();
-    void requestPlotUpdate();
-    // Slot to handle clicks emitted from SmilePlot
-    void onPlotPointClicked(SmilePlot::ScatterType type, double strike, double iv, QPointF screenPos);
     void onResetZoomClicked();
     void onModeButtonClicked(int id);
+    void onPlotPointClicked(const SmilePointData& pointData);
 
 private:
     QWidget* m_centralWidget = nullptr;
@@ -67,13 +64,14 @@ private:
     QMap<QString, QMap<QDate, PlotDataForDate>> m_allPlotData;
     // Stores available dates for the *currently selected* symbol (used to populate date combo)
     QList<QDate> m_availableDatesForCurrentSymbol;
+    QStringList m_availableSymbols; // Keep track of all symbols seen
     // Stores the currently selected symbol and date from the UI
     QString m_currentSymbol;
     QDate m_currentDate;
 
     void setupUi();
     void setupConnections();
-    void populateSymbolCombo(const QStringList& symbols);
+    void populateSymbolCombo();
     void populateDateCombo();
     void plotSelectedData();  // Filters data and calls SmilePlot::updateData
 

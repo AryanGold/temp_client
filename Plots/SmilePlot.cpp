@@ -29,7 +29,10 @@ SmilePlot::SmilePlot(QWidget* parent)
     m_CurrentMode = SmilePlot::PlotMode::pmPan;
     m_chart = chart();
     setupChart();
-    Log.msg(QString("Widget created using Qt Charts."), Logger::Level::DEBUG);
+
+    // Enable mouse tracking to receive mouseMoveEvents even when no button is pressed (for hover)
+    this->setMouseTracking(true);
+    m_chart->setAcceptHoverEvents(true); // Ensure chart processes hover
 }
 
 void SmilePlot::setupChart()
@@ -84,8 +87,8 @@ void SmilePlot::setupChart()
     setRenderHint(QPainter::Antialiasing);
     setCursor(Qt::ArrowCursor);
 
-    connect(m_askSeries, &QScatterSeries::clicked, this, &SmilePlot::handleAskClick);
-    connect(m_bidSeries, &QScatterSeries::clicked, this, &SmilePlot::handleBidClick);
+    //connect(m_askSeries, &QScatterSeries::clicked, this, &SmilePlot::handleAskClick);
+    //connect(m_bidSeries, &QScatterSeries::clicked, this, &SmilePlot::handleBidClick);
 
     connect(m_askSeries, &QScatterSeries::hovered, this, &SmilePlot::handleAskHover);
     connect(m_bidSeries, &QScatterSeries::hovered, this, &SmilePlot::handleBidHover);
@@ -143,7 +146,6 @@ void SmilePlot::updateData(const QVector<QPointF>& strikes,
 void SmilePlot::clearPlot()
 {
     m_theoSeries->clear(); m_askSeries->clear(); m_bidSeries->clear();
-    m_askTooltips.clear(); m_bidTooltips.clear(); // Clear QPoint maps
     if (m_axisX && m_axisY) { m_axisX->setRange(0, 100); m_axisY->setRange(0, 1); }
 }
 
@@ -165,89 +167,61 @@ void SmilePlot::resetZoom()
 //----------------------------------------------------------------------------
 // Private Slots (Click Handlers - Use QPoint for lookup)
 //----------------------------------------------------------------------------
+/*
 void SmilePlot::handleAskClick(const QPointF& point) {
     Log.msg(FNAME + QString("Ask IV point clicked - Strike: %1, IV: %2").arg(point.x()).arg(point.y()), Logger::Level::INFO);
-    QPoint keyPoint = point.toPoint();
-    QString tooltip = m_askTooltips.value(keyPoint, QString("Strike: %1\nAsk IV: %2").arg(point.x()).arg(point.y(), 0, 'f', 4));
-    QToolTip::showText(QCursor::pos(), tooltip, this);
+
+    int dataIndex = findDataIndexForPoint(point, m_bidSeries);
+    if (dataIndex >= 0) {
+        const SmilePointData& pointData = m_pointDetails[dataIndex];
+        QString tooltipText = pointData.formatForTooltip();
+    }
+
     emit pointClicked(AskIV, point.x(), point.y(), mapFromGlobal(QCursor::pos()));
 }
 
 void SmilePlot::handleBidClick(const QPointF& point) {
     Log.msg(FNAME + QString("Bid IV point clicked - Strike: %1, IV: %2").arg(point.x()).arg(point.y()), Logger::Level::INFO);
-    QPoint keyPoint = point.toPoint();
-    QString tooltip = m_bidTooltips.value(keyPoint, QString("Strike: %1\nBid IV: %2").arg(point.x()).arg(point.y(), 0, 'f', 4));
-    QToolTip::showText(QCursor::pos(), tooltip, this);
+    
+    int dataIndex = findDataIndexForPoint(point, m_bidSeries);
+    if (dataIndex >= 0) {
+        const SmilePointData& pointData = m_pointDetails[dataIndex];
+        QString tooltipText = pointData.formatForTooltip();
+    }
+
     emit pointClicked(BidIV, point.x(), point.y(), mapFromGlobal(QCursor::pos()));
-}
+}*/
 
 void SmilePlot::handleAskHover(const QPointF& point, bool state) {
-    if (state) { // Mouse is hovering OVER the point (or within tolerance)
-        //int dataIndex = findDataIndexForPoint(point, m_theoSeries);
-        //if (dataIndex >= 0) {
-        //    const SmilePointData& pointData = mPointDetails[dataIndex];
-        //    QString tooltipText = pointData.formatForTooltip();
-        //    QPoint viewPos = m_chart->mapToPosition(point, m_theoSeries);
-        //    QPoint globalPos = this->mapToGlobal(viewPos); // Use 'this' (the ChartView)
-        //    QToolTip::showText(globalPos, tooltipText, this); // Use 'this'
-        //}
-        //else {
-        //    QToolTip::hideText(); // Hide if index invalid
-        //}
-        QToolTip::showText(QCursor::pos(), "GG Ask", this);
-    }
-    else { // Mouse left the point
-        QToolTip::hideText(); // Hide the tooltip
-    }
-}
-
-void SmilePlot::handleBidHover(const QPointF& point, bool state) {
-    if (state) { // Mouse is hovering OVER the point (or within tolerance)
-        //int dataIndex = findDataIndexForPoint(point, m_theoSeries);
-        //if (dataIndex >= 0) {
-        //    const SmilePointData& pointData = mPointDetails[dataIndex];
-        //    QString tooltipText = pointData.formatForTooltip();
-        //    QPoint viewPos = m_chart->mapToPosition(point, m_theoSeries);
-        //    QPoint globalPos = this->mapToGlobal(viewPos); // Use 'this' (the ChartView)
-        //    QToolTip::showText(globalPos, tooltipText, this); // Use 'this'
-        //}
-        //else {
-        //    QToolTip::hideText(); // Hide if index invalid
-        //}
-        QToolTip::showText(QCursor::pos(), "GG Bid", this);
-    }
-    else { // Mouse left the point
-        QToolTip::hideText(); // Hide the tooltip
-    }
-}
-
-//----------------------------------------------------------------------------
-// Private Helpers (createPoints is same, mapTooltips adapts)
-//----------------------------------------------------------------------------
-QList<QPointF> SmilePlot::createPoints(const QVector<double>& xData, const QVector<double>& yData)
-{
-    // --- This helper remains the same, returns QList<QPointF> ---
-    QList<QPointF> points;
-    int size = qMin(xData.size(), yData.size()); points.reserve(size);
-    for (int i = 0; i < size; ++i) {
-        if (!std::isnan(xData[i]) && !std::isinf(xData[i]) && !std::isnan(yData[i]) && !std::isinf(yData[i])) {
-            points.append(QPointF(xData[i], yData[i]));
+    if (state) {
+        m_hoveredSeries = m_askSeries;
+        mHoveredDataIndex = findDataIndexForPoint(point, m_askSeries);
+        if (mHoveredDataIndex >= 0) {
+            showPointTooltip(mHoveredDataIndex, QCursor::pos());
         }
-        else { /* Log Debug */ }
     }
-    return points;
+    else {
+        if (m_hoveredSeries == m_askSeries) {
+            m_hoveredSeries = nullptr;
+            mHoveredDataIndex = -1;
+            QToolTip::hideText();
+        }
+    }
 }
-
-// --- mapTooltips now uses QMap<QPoint, QString> ---
-void SmilePlot::mapTooltips(const QList<QPointF>& points, const QStringList& tooltips, QHash<QPoint, QString>& outTooltipMap) // <<< Map type changed
-{
-    outTooltipMap.clear();
-    int size = qMin(points.size(), tooltips.size());
-    if (points.size() != tooltips.size()) { /* Log Warning */ }
-
-    for (int i = 0; i < size; ++i) {
-        // --- Insert using the converted QPoint ---
-        outTooltipMap.insert(points.at(i).toPoint(), tooltips.at(i)); // <<< Convert to QPoint key here
+void SmilePlot::handleBidHover(const QPointF& point, bool state) {
+    if (state) {
+        m_hoveredSeries = m_bidSeries;
+        mHoveredDataIndex = findDataIndexForPoint(point, m_bidSeries);
+        if (mHoveredDataIndex >= 0) {
+            showPointTooltip(mHoveredDataIndex, QCursor::pos());
+        }   
+    }
+    else {
+        if (m_hoveredSeries == m_bidSeries) {
+            m_hoveredSeries = nullptr;
+            mHoveredDataIndex = -1;
+            QToolTip::hideText();
+        }
     }
 }
 
@@ -272,7 +246,7 @@ void SmilePlot::mousePressEvent(QMouseEvent* event) {
     if (m_CurrentMode == pmPan && event->button() == Qt::LeftButton) {
         m_panLastPos = event->pos(); // Record position relative to this widget
         m_isPanning = true;
-        this->setCursor(Qt::CrossCursor);
+        this->setCursor(Qt::ArrowCursor);
         event->accept(); // Indicate we handled this
     }
     else if (m_CurrentMode == pmZoom) {
@@ -293,10 +267,6 @@ void SmilePlot::mouseMoveEvent(QMouseEvent* event) {
         m_panLastPos = event->pos(); // Update position for next move
         event->accept(); // Indicate we handled this
     }
-    else if (m_CurrentMode == pmZoom) {
-        // Let QChartView handle drawing the rubber band
-        QChartView::mouseMoveEvent(event);
-    }
     else {
         QChartView::mouseMoveEvent(event);
     }
@@ -305,18 +275,38 @@ void SmilePlot::mouseMoveEvent(QMouseEvent* event) {
 void SmilePlot::mouseReleaseEvent(QMouseEvent* event) {
     if (m_isPanning && event->button() == Qt::LeftButton) {
         m_isPanning = false;
-        this->setCursor(Qt::CrossCursor); // Reset cursor for pan mode
-        event->accept(); // Indicate we handled this
+        event->accept();
     }
     else if (m_CurrentMode == pmZoom && event->button() == Qt::LeftButton) {
-        // Zoom logic is handled by QChartView's rubber band selection
-        // The base class implementation likely handles the zoomIn call
-        // based on the rubberBandRect when the button is released.
-        QChartView::mouseReleaseEvent(event); // IMPORTANT: Call base class for zoom!
-        // Reset cursor after zoom attempt
-        this->setCursor(Qt::CrossCursor);
+        // Let base class handle zoom first
+        QChartView::mouseReleaseEvent(event);
+    }
+    else if (event->button() == Qt::LeftButton) {
+        // --- Check for Click Confirmation via Hover ---
+        // If mouse is released AND a point was being hovered over
+        if (m_hoveredSeries && mHoveredDataIndex != -1) {
+            Log.msg(FNAME + "Click confirmed via hover for index: " + 
+                QString::number(mHoveredDataIndex), Logger::Level::DEBUG);
+            if (mHoveredDataIndex >= 0 && mHoveredDataIndex < m_pointDetails.size()) {
+                // Emit the signal with the data of the hovered point
+                emit pointClicked(m_pointDetails[mHoveredDataIndex]);
+            }
+            else {
+                Log.msg(FNAME + "Hovered index " + QString::number(mHoveredDataIndex) + 
+                    " out of bounds for details.", Logger::Level::WARNING);
+            }
+            // Optionally hide tooltip after click?
+            //QToolTip::hideText();
+            event->accept(); // Event handled
+        }
+        else {
+            // Mouse released, but not over a known point, pass to base
+            QChartView::mouseReleaseEvent(event);
+        }
+        // --- End Click Confirmation ---
     }
     else {
+        // Other mouse buttons
         QChartView::mouseReleaseEvent(event);
     }
 }
@@ -336,16 +326,73 @@ void SmilePlot::wheelEvent(QWheelEvent* event) {
 
     if (delta > 0) {
         // Zoom In
-        Log.msg(FNAME + "Wheel Zoom In", Logger::Level::DEBUG);
         m_chart->zoom(factor); // Zoom the chart by the factor (centered)
     }
     else {
         // Zoom Out
-        Log.msg(FNAME + "Wheel Zoom Out", Logger::Level::DEBUG);
         m_chart->zoom(1.0 / factor); // Zoom out by the inverse factor
     }
 
     event->accept(); // Indicate we handled the wheel event
+}
+
+// Optional: Clear hover state if mouse leaves the plot widget
+void SmilePlot::leaveEvent(QEvent *event) {
+    Q_UNUSED(event);
+    if (m_hoveredSeries) {
+        m_hoveredSeries = nullptr;
+        mHoveredDataIndex = -1;
+        QToolTip::hideText();
+    }
+}
+
+// --- Tooltip Helper ---
+void SmilePlot::showPointTooltip(int dataIndex, const QPoint& globalPos) {
+    if (dataIndex >= 0) {
+        const SmilePointData& pointData = m_pointDetails[dataIndex];
+        QString tooltipText = pointData.formatForTooltip();
+        QToolTip::showText(globalPos, tooltipText, this, this->rect());
+    }
+    else {
+        QToolTip::hideText();
+    }
+}
+
+// Helper to find the index in mPointDetails corresponding to a clicked/hovered point
+int SmilePlot::findDataIndexForPoint(const QPointF& seriesPoint, QAbstractSeries* series) const {
+    if (!series) return -1;
+    QList<QPointF> points;
+    if (auto* lineSeries = qobject_cast<QLineSeries*>(series)) { points = lineSeries->points(); }
+    else if (auto* scatterSeries = qobject_cast<QScatterSeries*>(series)) { points = scatterSeries->points(); }
+    else { return -1; }
+
+    if (points.isEmpty()) return -1;
+
+    constexpr qreal tolerance = 1e-9; // Tolerance for float comparison
+    int foundIndex = -1;
+
+    for (int i = 0; i < points.size(); ++i) {
+        if (std::fabs(points[i].x() - seriesPoint.x()) < tolerance &&
+            std::fabs(points[i].y() - seriesPoint.y()) < tolerance) {
+            foundIndex = i;
+            break;
+        }
+    }
+
+    if (foundIndex != -1) {
+        // Check against the MEMBER variable mPointDetails bounds
+        if (foundIndex < m_pointDetails.size()) {
+            return foundIndex;
+        }
+        else {
+            Log.msg(FNAME + "Series index " + QString::number(foundIndex) + 
+                " out of bounds for details vector size " + 
+                QString::number(m_pointDetails.size()), Logger::Level::WARNING);
+            return -1;
+        }
+    }
+    // Log.msg(FNAME + "Could not find exact matching point in series.", Logger::Level::TRACE);
+    return -1;
 }
 
 // --- End Mouse Event Handlers ---
